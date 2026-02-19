@@ -108,7 +108,84 @@ def test_update_state_missing_fields(admin_client):
 # PaymentView instantiation
 # ---------------------------------------------------------------------------
 
-def test_payment_view_is_base_view():
+def test_refund_action_success(admin_client, admin_ext):
+    """Refund action marks the payment as refunded."""
+    resp = admin_client.post(
+        "/merchants/checkout",
+        json={"amount": "10.00", "currency": "USD"},
+    )
+    session_id = resp.get_json()["session_id"]
+
+    refund_resp = admin_client.post(
+        "/admin/payments/refund",
+        data={"payment_id": session_id},
+    )
+    assert refund_resp.status_code == 302
+
+    stored = admin_ext.get_session(session_id)
+    assert stored["state"] == "refunded"
+
+
+def test_refund_action_unknown_id(admin_client):
+    """Refund of an unknown payment ID flashes a 'not found' message."""
+    resp = admin_client.post(
+        "/admin/payments/refund",
+        data={"payment_id": "does-not-exist"},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert b"not found" in resp.data
+
+
+def test_cancel_action_success(admin_client, admin_ext):
+    """Cancel action marks the payment as cancelled."""
+    resp = admin_client.post(
+        "/merchants/checkout",
+        json={"amount": "5.00", "currency": "EUR"},
+    )
+    session_id = resp.get_json()["session_id"]
+
+    cancel_resp = admin_client.post(
+        "/admin/payments/cancel",
+        data={"payment_id": session_id},
+    )
+    assert cancel_resp.status_code == 302
+
+    stored = admin_ext.get_session(session_id)
+    assert stored["state"] == "cancelled"
+
+
+def test_cancel_action_unknown_id(admin_client):
+    """Cancel of an unknown payment ID flashes a 'not found' message."""
+    resp = admin_client.post(
+        "/admin/payments/cancel",
+        data={"payment_id": "does-not-exist"},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert b"not found" in resp.data
+
+
+def test_refund_missing_payment_id(admin_client):
+    """Refund with no payment_id flashes an invalid message."""
+    resp = admin_client.post(
+        "/admin/payments/refund",
+        data={},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert b"Invalid" in resp.data
+
+
+def test_cancel_missing_payment_id(admin_client):
+    """Cancel with no payment_id flashes an invalid message."""
+    resp = admin_client.post(
+        "/admin/payments/cancel",
+        data={},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert b"Invalid" in resp.data
     """PaymentView is a subclass of Flask-Admin BaseView."""
     from flask_admin import BaseView
 

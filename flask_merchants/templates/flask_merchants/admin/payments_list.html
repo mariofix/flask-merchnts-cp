@@ -18,17 +18,20 @@
         <th>Amount</th>
         <th>Currency</th>
         <th>State</th>
+        <th>Update State</th>
         <th>Actions</th>
       </tr>
     </thead>
     <tbody>
       {% for p in payments %}
       <tr>
-        <td>{{ p.session_id }}</td>
+        <td><small>{{ p.session_id }}</small></td>
         <td>{{ p.provider }}</td>
         <td>{{ p.amount }}</td>
         <td>{{ p.currency }}</td>
-        <td>{{ p.state }}</td>
+        <td>
+          <span class="badge badge-secondary">{{ p.state }}</span>
+        </td>
         <td>
           <form method="POST" action="{{ url_for('.update') }}" class="form-inline">
             <input type="hidden" name="payment_id" value="{{ p.session_id }}">
@@ -40,10 +43,26 @@
             <button type="submit" class="btn btn-sm btn-primary">Update</button>
           </form>
         </td>
+        <td>
+          <form method="POST" action="{{ url_for('.refund') }}" class="d-inline">
+            <input type="hidden" name="payment_id" value="{{ p.session_id }}">
+            <button type="submit" class="btn btn-sm btn-warning"
+              onclick="return confirm('Mark {{ p.session_id }} as refunded?')">
+              Refund
+            </button>
+          </form>
+          <form method="POST" action="{{ url_for('.cancel') }}" class="d-inline ml-1">
+            <input type="hidden" name="payment_id" value="{{ p.session_id }}">
+            <button type="submit" class="btn btn-sm btn-danger"
+              onclick="return confirm('Cancel payment {{ p.session_id }}?')">
+              Cancel
+            </button>
+          </form>
+        </td>
       </tr>
       {% else %}
       <tr>
-        <td colspan="6" class="text-center text-muted">No payments recorded yet.</td>
+        <td colspan="7" class="text-center text-muted">No payments recorded yet.</td>
       </tr>
       {% endfor %}
     </tbody>

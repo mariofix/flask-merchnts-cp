@@ -5,6 +5,13 @@ from flask import Flask
 
 import merchants as sdk
 from flask_merchants import FlaskMerchants
+from flask_merchants.version import __version__
+
+
+def test_version_string():
+    """__version__ is a non-empty string."""
+    assert isinstance(__version__, str)
+    assert __version__
 
 
 def test_init_direct():

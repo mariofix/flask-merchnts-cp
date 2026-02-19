@@ -9,7 +9,7 @@ from merchants.providers.dummy import DummyProvider
 
 from flask_merchants.views import create_blueprint
 
-__version__ = "0.1.0"
+from flask_merchants.version import __version__
 __all__ = ["FlaskMerchants"]
 
 
@@ -114,6 +114,14 @@ class FlaskMerchants:
             return False
         self._store[payment_id]["state"] = state
         return True
+
+    def refund_session(self, payment_id: str) -> bool:
+        """Mark *payment_id* as refunded. Returns ``True`` on success."""
+        return self.update_state(payment_id, "refunded")
+
+    def cancel_session(self, payment_id: str) -> bool:
+        """Mark *payment_id* as cancelled. Returns ``True`` on success."""
+        return self.update_state(payment_id, "cancelled")
 
     def all_sessions(self) -> list[dict[str, Any]]:
         """Return all stored payment sessions."""

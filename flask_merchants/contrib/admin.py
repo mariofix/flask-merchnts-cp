@@ -44,60 +44,15 @@ _STATE_CHOICES = [
     ("unknown", "Unknown"),
 ]
 
-# Inline template to avoid external template file discovery issues.
-_LIST_TEMPLATE = """\
-{% extends 'admin/master.html' %}
-{% block body %}
-<div class="container-fluid">
-  <h2>Payments</h2>
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% for category, message in messages %}
-      <div class="alert alert-{{ category }}">{{ message }}</div>
-    {% endfor %}
-  {% endwith %}
-  <table class="table table-bordered table-striped">
-    <thead>
-      <tr>
-        <th>Payment ID</th><th>Provider</th><th>Amount</th>
-        <th>Currency</th><th>State</th><th>Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for p in payments %}
-      <tr>
-        <td>{{ p.session_id }}</td>
-        <td>{{ p.provider }}</td>
-        <td>{{ p.amount }}</td>
-        <td>{{ p.currency }}</td>
-        <td>{{ p.state }}</td>
-        <td>
-          <form method="POST" action="{{ url_for('.update') }}" class="form-inline">
-            <input type="hidden" name="payment_id" value="{{ p.session_id }}">
-            <select name="state" class="form-control form-control-sm mr-1">
-              {% for value, label in state_choices %}
-              <option value="{{ value }}" {% if value == p.state %}selected{% endif %}>
-                {{ label }}
-              </option>
-              {% endfor %}
-            </select>
-            <button type="submit" class="btn btn-sm btn-primary">Update</button>
-          </form>
-        </td>
-      </tr>
-      {% else %}
-      <tr>
-        <td colspan="6" class="text-center text-muted">No payments recorded yet.</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% endblock %}
-"""
-
 
 class PaymentView(BaseView):
-    """Flask-Admin view that lists all stored payments and allows updating their state.
+    """Flask-Admin view that lists all stored payments and allows managing them.
+
+    Provides:
+    - List of all stored payment sessions.
+    - Update state via dropdown.
+    - Dedicated Refund action.
+    - Dedicated Cancel action.
 
     Args:
         ext: Initialised :class:`~flask_merchants.FlaskMerchants` extension instance.
@@ -129,7 +84,7 @@ class PaymentView(BaseView):
 
     @expose("/update", methods=["POST"])
     def update(self):
-        """Update the stored state of a payment."""
+        """Update the stored state of a payment via the dropdown."""
         from flask import flash, redirect, request, url_for
 
         payment_id = request.form.get("payment_id", "").strip()
@@ -139,6 +94,38 @@ class PaymentView(BaseView):
             flash("Invalid form submission.", "danger")
         elif self._ext.update_state(payment_id, new_state):
             flash(f"Payment {payment_id} updated to '{new_state}'.", "success")
+        else:
+            flash(f"Payment {payment_id} not found.", "danger")
+
+        return redirect(url_for(".index"))
+
+    @expose("/refund", methods=["POST"])
+    def refund(self):
+        """Mark a payment as refunded."""
+        from flask import flash, redirect, request, url_for
+
+        payment_id = request.form.get("payment_id", "").strip()
+
+        if not payment_id:
+            flash("Invalid form submission.", "danger")
+        elif self._ext.refund_session(payment_id):
+            flash(f"Payment {payment_id} marked as refunded.", "success")
+        else:
+            flash(f"Payment {payment_id} not found.", "danger")
+
+        return redirect(url_for(".index"))
+
+    @expose("/cancel", methods=["POST"])
+    def cancel(self):
+        """Mark a payment as cancelled."""
+        from flask import flash, redirect, request, url_for
+
+        payment_id = request.form.get("payment_id", "").strip()
+
+        if not payment_id:
+            flash("Invalid form submission.", "danger")
+        elif self._ext.cancel_session(payment_id):
+            flash(f"Payment {payment_id} marked as cancelled.", "success")
         else:
             flash(f"Payment {payment_id} not found.", "danger")
 
