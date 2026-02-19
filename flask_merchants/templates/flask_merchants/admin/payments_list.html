@@ -58,6 +58,12 @@
               Cancel
             </button>
           </form>
+          <form method="POST" action="{{ url_for('.sync') }}" class="d-inline ml-1">
+            <input type="hidden" name="payment_id" value="{{ p.session_id }}">
+            <button type="submit" class="btn btn-sm btn-info">
+              Sync
+            </button>
+          </form>
         </td>
       </tr>
       {% else %}

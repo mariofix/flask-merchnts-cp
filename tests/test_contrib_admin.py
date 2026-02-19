@@ -186,6 +186,60 @@ def test_cancel_missing_payment_id(admin_client):
     )
     assert resp.status_code == 200
     assert b"Invalid" in resp.data
+
+
+# ---------------------------------------------------------------------------
+# Sync from provider
+# ---------------------------------------------------------------------------
+
+def test_sync_action_success(admin_client, admin_ext):
+    """Sync action fetches live state from the provider and updates the store."""
+    resp = admin_client.post(
+        "/merchants/checkout",
+        json={"amount": "1.00", "currency": "USD"},
+    )
+    session_id = resp.get_json()["session_id"]
+    # State starts as pending
+    assert admin_ext.get_session(session_id)["state"] == "pending"
+
+    sync_resp = admin_client.post(
+        "/admin/payments/sync",
+        data={"payment_id": session_id},
+    )
+    assert sync_resp.status_code == 302
+
+    # DummyProvider always returns a terminal state; store should be updated
+    updated_state = admin_ext.get_session(session_id)["state"]
+    assert updated_state != "pending"
+
+
+def test_sync_action_unknown_id(admin_client):
+    """Sync of an unknown payment ID flashes a failure message."""
+    resp = admin_client.post(
+        "/admin/payments/sync",
+        data={"payment_id": "does-not-exist"},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert b"not found" in resp.data
+
+
+def test_sync_missing_payment_id(admin_client):
+    """Sync with no payment_id flashes an invalid message."""
+    resp = admin_client.post(
+        "/admin/payments/sync",
+        data={},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert b"Invalid" in resp.data
+
+
+# ---------------------------------------------------------------------------
+# PaymentView class
+# ---------------------------------------------------------------------------
+
+def test_payment_view_is_base_view():
     """PaymentView is a subclass of Flask-Admin BaseView."""
     from flask_admin import BaseView
 

@@ -53,6 +53,7 @@ class PaymentView(BaseView):
     - Update state via dropdown.
     - Dedicated Refund action.
     - Dedicated Cancel action.
+    - Sync from Provider action (fetches live status from the payment provider).
 
     Args:
         ext: Initialised :class:`~flask_merchants.FlaskMerchants` extension instance.
@@ -128,5 +129,28 @@ class PaymentView(BaseView):
             flash(f"Payment {payment_id} marked as cancelled.", "success")
         else:
             flash(f"Payment {payment_id} not found.", "danger")
+
+        return redirect(url_for(".index"))
+
+    @expose("/sync", methods=["POST"])
+    def sync(self):
+        """Fetch live payment status from the provider and update the stored state."""
+        from flask import flash, redirect, request, url_for
+
+        payment_id = request.form.get("payment_id", "").strip()
+
+        if not payment_id:
+            flash("Invalid form submission.", "danger")
+        else:
+            updated = self._ext.sync_from_provider(payment_id)
+            if updated is None:
+                flash(
+                    f"Payment {payment_id} not found or provider call failed.", "danger"
+                )
+            else:
+                flash(
+                    f"Payment {payment_id} synced from provider: state is now '{updated['state']}'.",
+                    "success",
+                )
 
         return redirect(url_for(".index"))

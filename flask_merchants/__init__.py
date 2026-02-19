@@ -123,6 +123,21 @@ class FlaskMerchants:
         """Mark *payment_id* as cancelled. Returns ``True`` on success."""
         return self.update_state(payment_id, "cancelled")
 
+    def sync_from_provider(self, payment_id: str) -> dict[str, Any] | None:
+        """Fetch live status from the provider and update the stored state.
+
+        Returns the updated stored record, or ``None`` if *payment_id* is not
+        in the store or the provider call fails.
+        """
+        if payment_id not in self._store:
+            return None
+        try:
+            status = self.client.payments.get(payment_id)
+        except Exception:  # noqa: BLE001
+            return None
+        self._store[payment_id]["state"] = status.state.value
+        return self._store[payment_id]
+
     def all_sessions(self) -> list[dict[str, Any]]:
         """Return all stored payment sessions."""
         return list(self._store.values())
