@@ -7,7 +7,7 @@ import json
 import pytest
 from flask import Flask
 
-from flask_merchants import Merchants
+from flask_merchants import FlaskMerchants
 
 
 def _sign(payload: bytes, secret: str) -> str:
@@ -22,7 +22,7 @@ def webhook_app():
     app = Flask(__name__)
     app.config["TESTING"] = True
     app.config["MERCHANTS_WEBHOOK_SECRET"] = "test-webhook-secret"
-    Merchants(app)
+    FlaskMerchants(app)
     return app
 
 

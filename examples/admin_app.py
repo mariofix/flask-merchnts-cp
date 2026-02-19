@@ -14,14 +14,14 @@ Create a checkout first at http://localhost:5000/merchants/checkout.
 
 from flask import Flask
 from flask_admin import Admin
-from flask_merchants import Merchants
+from flask_merchants import FlaskMerchants
 from flask_merchants.contrib.admin import PaymentView
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "change-me-in-production"
 app.config["MERCHANTS_URL_PREFIX"] = "/merchants"
 
-ext = Merchants(app)
+ext = FlaskMerchants(app)
 
 admin = Admin(app, name="Payment Admin")
 admin.add_view(PaymentView(ext, name="Payments", endpoint="payments"))

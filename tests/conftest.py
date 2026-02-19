@@ -3,7 +3,7 @@
 import pytest
 from flask import Flask
 
-from flask_merchants import Merchants
+from flask_merchants import FlaskMerchants
 
 
 @pytest.fixture
@@ -14,7 +14,7 @@ def app():
     application.config["SECRET_KEY"] = "test-secret"
     application.config["MERCHANTS_WEBHOOK_SECRET"] = None
 
-    ext = Merchants(application)
+    ext = FlaskMerchants(application)
     application.extensions["merchants_ext"] = ext
 
     yield application
@@ -28,5 +28,5 @@ def client(app):
 
 @pytest.fixture
 def ext(app):
-    """The Merchants extension instance."""
+    """The FlaskMerchants extension instance."""
     return app.extensions["merchants"]

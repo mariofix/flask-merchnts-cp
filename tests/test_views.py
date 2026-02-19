@@ -119,12 +119,12 @@ def test_payment_status_updates_store(client, ext):
 
     # Use a provider that always returns SUCCEEDED
     from flask import Flask
-    from flask_merchants import Merchants
+    from flask_merchants import FlaskMerchants
 
     test_app = Flask(__name__)
     test_app.config["TESTING"] = True
     provider = DummyProvider(always_state=PaymentState.SUCCEEDED)
-    test_ext = Merchants(test_app, provider=provider)
+    test_ext = FlaskMerchants(test_app, provider=provider)
 
     with test_app.test_client() as tc:
         # Create session

@@ -8,11 +8,11 @@ Example::
 
     from flask import Flask
     from flask_admin import Admin
-    from flask_merchants import Merchants
+    from flask_merchants import FlaskMerchants
     from flask_merchants.contrib.admin import PaymentView
 
     app = Flask(__name__)
-    ext = Merchants(app)
+    ext = FlaskMerchants(app)
 
     admin = Admin(app, name="My Shop")
     admin.add_view(PaymentView(ext, name="Payments", endpoint="payments"))
@@ -31,7 +31,7 @@ except ImportError as exc:  # pragma: no cover
     ) from exc
 
 if TYPE_CHECKING:
-    from flask_merchants import Merchants
+    from flask_merchants import FlaskMerchants
 
 
 _STATE_CHOICES = [
@@ -100,7 +100,7 @@ class PaymentView(BaseView):
     """Flask-Admin view that lists all stored payments and allows updating their state.
 
     Args:
-        ext: Initialised :class:`~flask_merchants.Merchants` extension instance.
+        ext: Initialised :class:`~flask_merchants.FlaskMerchants` extension instance.
         name: Display name shown in the admin navigation bar.
         endpoint: Internal Flask endpoint prefix (must be unique).
         category: Optional admin category/group name.
@@ -108,7 +108,7 @@ class PaymentView(BaseView):
 
     def __init__(
         self,
-        ext: "Merchants",
+        ext: "FlaskMerchants",
         name: str = "Payments",
         endpoint: str = "payments",
         category: str | None = None,

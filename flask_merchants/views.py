@@ -9,10 +9,10 @@ import merchants
 from flask import Blueprint, jsonify, redirect, request, url_for
 
 if TYPE_CHECKING:
-    from flask_merchants import Merchants
+    from flask_merchants import FlaskMerchants
 
 
-def create_blueprint(ext: "Merchants") -> Blueprint:
+def create_blueprint(ext: "FlaskMerchants") -> Blueprint:
     """Return a Blueprint pre-configured with the extension instance."""
 
     bp = Blueprint("merchants", __name__, template_folder="templates")

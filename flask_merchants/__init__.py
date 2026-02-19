@@ -10,18 +10,18 @@ from merchants.providers.dummy import DummyProvider
 from flask_merchants.views import create_blueprint
 
 __version__ = "0.1.0"
-__all__ = ["Merchants"]
+__all__ = ["FlaskMerchants"]
 
 
-class Merchants:
+class FlaskMerchants:
     """Flask extension that wires the *merchants* SDK into a Flask application.
 
     Usage – application factory pattern::
 
         from flask import Flask
-        from flask_merchants import Merchants
+        from flask_merchants import FlaskMerchants
 
-        merchants_ext = Merchants()
+        merchants_ext = FlaskMerchants()
 
         def create_app():
             app = Flask(__name__)
@@ -31,10 +31,10 @@ class Merchants:
     Usage – direct initialisation::
 
         from flask import Flask
-        from flask_merchants import Merchants
+        from flask_merchants import FlaskMerchants
 
         app = Flask(__name__)
-        ext = Merchants(app)
+        ext = FlaskMerchants(app)
 
     Configuration keys (set on ``app.config``):
 
@@ -84,7 +84,7 @@ class Merchants:
         """The underlying :class:`merchants.Client` instance."""
         if self._client is None:
             raise RuntimeError(
-                "Merchants extension not initialised. Call init_app(app) first."
+                "FlaskMerchants extension not initialised. Call init_app(app) first."
             )
         return self._client
 

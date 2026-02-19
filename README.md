@@ -4,7 +4,7 @@ A Flask extension for the [merchants](https://github.com/mariofix/merchnts-cp) h
 
 ## Features
 
-- Flask extension class (`Merchants`) with `init_app` support
+- Flask extension class (`FlaskMerchants`) with `init_app` support
 - Blueprint with routes for checkout, success/cancel landing pages, payment status, and webhooks
 - Uses `DummyProvider` by default – no credentials needed for local development
 - Optional Flask-Admin views (under `flask_merchants.contrib.admin`) to list and update payment statuses
@@ -20,10 +20,10 @@ pip install "flask-merchants[admin]" # with Flask-Admin support
 
 ```python
 from flask import Flask
-from flask_merchants import Merchants
+from flask_merchants import FlaskMerchants
 
 app = Flask(__name__)
-ext = Merchants(app)  # uses DummyProvider by default
+ext = FlaskMerchants(app)  # uses DummyProvider by default
 ```
 
 ### Available routes (default prefix `/merchants`)

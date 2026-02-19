@@ -24,13 +24,13 @@ Then open http://localhost:5000/merchants/checkout in your browser or use curl:
 """
 
 from flask import Flask
-from flask_merchants import Merchants
+from flask_merchants import FlaskMerchants
 
 app = Flask(__name__)
 app.config["MERCHANTS_URL_PREFIX"] = "/merchants"
 
 # DummyProvider is used by default – no credentials needed
-ext = Merchants(app)
+ext = FlaskMerchants(app)
 
 if __name__ == "__main__":
     app.run(debug=True)

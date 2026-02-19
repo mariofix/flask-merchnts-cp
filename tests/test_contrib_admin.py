@@ -4,7 +4,7 @@ import pytest
 from flask import Flask
 from flask_admin import Admin
 
-from flask_merchants import Merchants
+from flask_merchants import FlaskMerchants
 from flask_merchants.contrib.admin import PaymentView
 
 
@@ -15,7 +15,7 @@ def admin_app():
     app.config["TESTING"] = True
     app.config["SECRET_KEY"] = "test-secret"
 
-    ext = Merchants(app)
+    ext = FlaskMerchants(app)
 
     admin = Admin(app, name="Test Admin")
     admin.add_view(PaymentView(ext, name="Payments", endpoint="payments"))
@@ -120,6 +120,6 @@ def test_payment_view_requires_ext():
     app = Flask(__name__)
     app.config["TESTING"] = True
     app.config["SECRET_KEY"] = "s"
-    ext = Merchants(app)
+    ext = FlaskMerchants(app)
     view = PaymentView(ext, name="P", endpoint="p")
     assert view._ext is ext
