@@ -1,20 +1,31 @@
-"""flask_merchants – Flask extension for the merchants hosted-checkout SDK."""
+"""flask_merchants – Flask/Quart extension for the merchants hosted-checkout SDK."""
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import merchants
 from merchants.providers.dummy import DummyProvider
 
 from flask_merchants.views import create_blueprint
-
 from flask_merchants.version import __version__
+
 __all__ = ["FlaskMerchants"]
 
 
+def _is_quart_app(app) -> bool:
+    """Return ``True`` when *app* is a :class:`quart.Quart` instance."""
+    try:
+        from quart import Quart
+
+        return isinstance(app, Quart)
+    except ImportError:
+        return False
+
+
 class FlaskMerchants:
-    """Flask extension that wires the *merchants* SDK into a Flask application.
+    """Flask/Quart extension that wires the *merchants* SDK into an application.
 
     Usage – application factory pattern::
 
@@ -36,11 +47,29 @@ class FlaskMerchants:
         app = Flask(__name__)
         ext = FlaskMerchants(app)
 
+    Usage – with SQLAlchemy (Flask-SQLAlchemy 3.x)::
+
+        from flask import Flask
+        from flask_sqlalchemy import SQLAlchemy
+        from flask_merchants import FlaskMerchants
+        from flask_merchants.models import Base
+
+        db = SQLAlchemy(model_class=Base)
+        app = Flask(__name__)
+        app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///payments.db"
+        ext = FlaskMerchants(app, db=db)
+        db.init_app(app)
+
+    Usage – with Quart (async)::
+
+        from quart import Quart
+        from flask_merchants import FlaskMerchants
+
+        app = Quart(__name__)
+        ext = FlaskMerchants(app)   # async blueprint selected automatically
+
     Configuration keys (set on ``app.config``):
 
-    ``MERCHANTS_PROVIDER``
-        String key of a pre-registered provider (default: ``"dummy"``).
-        Ignored when *provider* is supplied directly.
     ``MERCHANTS_WEBHOOK_SECRET``
         HMAC-SHA256 secret used to verify incoming webhook signatures.
         When ``None`` (default) signature verification is skipped.
@@ -48,10 +77,12 @@ class FlaskMerchants:
         URL prefix for the blueprint (default: ``"/merchants"``).
     """
 
-    def __init__(self, app=None, *, provider=None) -> None:
+    def __init__(self, app=None, *, provider=None, db=None) -> None:
         self._provider = provider
+        self._db = db
         self._client: merchants.Client | None = None
         # Simple in-memory payment store: {payment_id: dict}
+        # Used when no SQLAlchemy db is provided.
         self._store: dict[str, dict[str, Any]] = {}
 
         if app is not None:
@@ -62,14 +93,20 @@ class FlaskMerchants:
     # ------------------------------------------------------------------
 
     def init_app(self, app) -> None:
-        """Initialise the extension against *app*."""
+        """Initialise the extension against *app* (Flask or Quart)."""
         provider = self._provider or DummyProvider()
         self._client = merchants.Client(provider=provider)
 
         app.config.setdefault("MERCHANTS_WEBHOOK_SECRET", None)
         app.config.setdefault("MERCHANTS_URL_PREFIX", "/merchants")
 
-        blueprint = create_blueprint(self)
+        if _is_quart_app(app):
+            from flask_merchants.quart_views import create_async_blueprint
+
+            blueprint = create_async_blueprint(self)
+        else:
+            blueprint = create_blueprint(self)
+
         url_prefix = app.config["MERCHANTS_URL_PREFIX"]
         app.register_blueprint(blueprint, url_prefix=url_prefix)
 
@@ -89,12 +126,16 @@ class FlaskMerchants:
         return self._client
 
     # ------------------------------------------------------------------
-    # Payment store helpers (simple in-memory; replace for production)
+    # Payment store helpers
     # ------------------------------------------------------------------
 
     def save_session(self, session: merchants.CheckoutSession) -> None:
-        """Persist a :class:`~merchants.CheckoutSession` in the store."""
-        self._store[session.session_id] = {
+        """Persist a :class:`~merchants.CheckoutSession`.
+
+        When a SQLAlchemy *db* was provided the record is saved to the
+        database; otherwise it is kept in the in-memory store.
+        """
+        data = {
             "session_id": session.session_id,
             "redirect_url": session.redirect_url,
             "provider": session.provider,
@@ -104,12 +145,62 @@ class FlaskMerchants:
             "state": "pending",
         }
 
+        if self._db is not None:
+            from flask_merchants.models import Payment
+
+            record = Payment(
+                session_id=session.session_id,
+                redirect_url=session.redirect_url,
+                provider=session.provider,
+                amount=str(session.amount),
+                currency=session.currency,
+                state="pending",
+                metadata_json=json.dumps(session.metadata or {}),
+            )
+            self._db.session.add(record)
+            self._db.session.commit()
+
+        # Always keep in-memory copy for fast look-up
+        self._store[session.session_id] = data
+
     def get_session(self, payment_id: str) -> dict[str, Any] | None:
         """Return stored data for *payment_id*, or ``None``."""
+        if self._db is not None:
+            from flask_merchants.models import Payment
+
+            record = (
+                self._db.session.query(Payment)
+                .filter_by(session_id=payment_id)
+                .first()
+            )
+            if record is not None:
+                return record.to_dict()
+            return None
         return self._store.get(payment_id)
 
     def update_state(self, payment_id: str, state: str) -> bool:
         """Update the stored state for *payment_id*. Returns ``True`` on success."""
+        if self._db is not None:
+            from flask_merchants.models import Payment
+
+            record = (
+                self._db.session.query(Payment)
+                .filter_by(session_id=payment_id)
+                .first()
+            )
+            if record is None:
+                # Fall back to in-memory
+                if payment_id not in self._store:
+                    return False
+                self._store[payment_id]["state"] = state
+                return True
+            record.state = state
+            self._db.session.commit()
+            # Keep in-memory copy in sync
+            if payment_id in self._store:
+                self._store[payment_id]["state"] = state
+            return True
+
         if payment_id not in self._store:
             return False
         self._store[payment_id]["state"] = state
@@ -127,17 +218,24 @@ class FlaskMerchants:
         """Fetch live status from the provider and update the stored state.
 
         Returns the updated stored record, or ``None`` if *payment_id* is not
-        in the store or the provider call fails.
+        found or the provider call fails.
         """
-        if payment_id not in self._store:
+        stored = self.get_session(payment_id)
+        if stored is None:
             return None
         try:
             status = self.client.payments.get(payment_id)
         except Exception:  # noqa: BLE001
             return None
-        self._store[payment_id]["state"] = status.state.value
-        return self._store[payment_id]
+        self.update_state(payment_id, status.state.value)
+        stored["state"] = status.state.value
+        return stored
 
     def all_sessions(self) -> list[dict[str, Any]]:
         """Return all stored payment sessions."""
+        if self._db is not None:
+            from flask_merchants.models import Payment
+
+            records = self._db.session.query(Payment).all()
+            return [r.to_dict() for r in records]
         return list(self._store.values())

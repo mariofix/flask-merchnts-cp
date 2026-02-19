@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "flask-merchants"
 dynamic = ["version"]
-description = "Flask extension for the merchants hosted-checkout payment SDK"
+description = "Flask/Quart extension for the merchants hosted-checkout payment SDK"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
@@ -16,10 +16,20 @@ dependencies = [
 
 [project.optional-dependencies]
 admin = ["flask-admin>=2.0"]
+db = [
+    "flask-admin>=2.0",
+    "flask-sqlalchemy>=3.0",
+    "sqlalchemy>=2.0",
+]
+quart = ["quart>=0.19"]
 dev = [
     "pytest>=8.0",
     "pytest-flask>=1.3",
+    "pytest-asyncio>=0.21",
     "flask-admin>=2.0",
+    "flask-sqlalchemy>=3.0",
+    "sqlalchemy>=2.0",
+    "quart>=0.19",
 ]
 
 [tool.hatch.version]
@@ -27,3 +37,4 @@ path = "flask_merchants/version.py"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
