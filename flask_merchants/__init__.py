@@ -60,6 +60,16 @@ class FlaskMerchants:
         ext = FlaskMerchants(app, db=db)
         db.init_app(app)
 
+    Usage – with a custom SQLAlchemy model (bring your own table)::
+
+        from flask_merchants.models import PaymentMixin
+
+        class Pagos(PaymentMixin, db.Model):
+            __tablename__ = "pagos"
+            id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+        ext = FlaskMerchants(app, db=db, model=Pagos)
+
     Usage – with Quart (async)::
 
         from quart import Quart
@@ -77,9 +87,10 @@ class FlaskMerchants:
         URL prefix for the blueprint (default: ``"/merchants"``).
     """
 
-    def __init__(self, app=None, *, provider=None, db=None) -> None:
+    def __init__(self, app=None, *, provider=None, db=None, model=None) -> None:
         self._provider = provider
         self._db = db
+        self._model = model  # optional custom model class (must use PaymentMixin)
         self._client: merchants.Client | None = None
         # Simple in-memory payment store: {payment_id: dict}
         # Used when no SQLAlchemy db is provided.
@@ -125,6 +136,18 @@ class FlaskMerchants:
             )
         return self._client
 
+    @property
+    def _payment_model(self):
+        """Return the model class used for DB-backed storage.
+
+        Returns the custom model passed as ``model=`` to the constructor,
+        or falls back to the built-in :class:`~flask_merchants.models.Payment`.
+        """
+        if self._model is not None:
+            return self._model
+        from flask_merchants.models import Payment
+        return Payment
+
     # ------------------------------------------------------------------
     # Payment store helpers
     # ------------------------------------------------------------------
@@ -146,9 +169,8 @@ class FlaskMerchants:
         }
 
         if self._db is not None:
-            from flask_merchants.models import Payment
-
-            record = Payment(
+            model_cls = self._payment_model
+            record = model_cls(
                 session_id=session.session_id,
                 redirect_url=session.redirect_url,
                 provider=session.provider,
@@ -166,10 +188,9 @@ class FlaskMerchants:
     def get_session(self, payment_id: str) -> dict[str, Any] | None:
         """Return stored data for *payment_id*, or ``None``."""
         if self._db is not None:
-            from flask_merchants.models import Payment
-
+            model_cls = self._payment_model
             record = (
-                self._db.session.query(Payment)
+                self._db.session.query(model_cls)
                 .filter_by(session_id=payment_id)
                 .first()
             )
@@ -181,10 +202,9 @@ class FlaskMerchants:
     def update_state(self, payment_id: str, state: str) -> bool:
         """Update the stored state for *payment_id*. Returns ``True`` on success."""
         if self._db is not None:
-            from flask_merchants.models import Payment
-
+            model_cls = self._payment_model
             record = (
-                self._db.session.query(Payment)
+                self._db.session.query(model_cls)
                 .filter_by(session_id=payment_id)
                 .first()
             )
@@ -234,8 +254,7 @@ class FlaskMerchants:
     def all_sessions(self) -> list[dict[str, Any]]:
         """Return all stored payment sessions."""
         if self._db is not None:
-            from flask_merchants.models import Payment
-
-            records = self._db.session.query(Payment).all()
+            model_cls = self._payment_model
+            records = self._db.session.query(model_cls).all()
             return [r.to_dict() for r in records]
         return list(self._store.values())

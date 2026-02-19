@@ -43,6 +43,43 @@ ext = FlaskMerchants(app)  # uses DummyProvider by default
 | `MERCHANTS_URL_PREFIX` | `/merchants` | URL prefix for the blueprint |
 | `MERCHANTS_WEBHOOK_SECRET` | `None` | HMAC-SHA256 secret for webhook verification |
 
+### Bring your own model
+
+Install the `db` extra and mix :class:`~flask_merchants.models.PaymentMixin`
+into your own SQLAlchemy model.  Pass it via `model=` to
+:class:`~flask_merchants.FlaskMerchants`:
+
+```python
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import Integer
+from flask_merchants import FlaskMerchants
+from flask_merchants.models import PaymentMixin
+
+class Base(DeclarativeBase):
+    pass
+
+db = SQLAlchemy(model_class=Base)
+
+class Pagos(PaymentMixin, db.Model):
+    __tablename__ = "pagos"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # add your own columns here …
+
+app = Flask(__name__)
+ext = FlaskMerchants(app, db=db, model=Pagos)
+```
+
+From Flask-Admin you can then **Refund**, **Cancel**, and **Sync** payments:
+
+```python
+from flask_merchants.contrib.sqla import PaymentModelView
+from flask_admin import Admin
+
+admin = Admin(app)
+admin.add_view(PaymentModelView(Pagos, db.session, ext=ext, name="Pagos"))
+```
+
 ### Flask-Admin (optional)
 
 ```python
@@ -58,7 +95,9 @@ admin.add_view(PaymentView(ext, name="Payments", endpoint="payments"))
 See the `examples/` directory:
 
 - `examples/basic_app.py` – basic usage with DummyProvider
-- `examples/admin_app.py` – usage with Flask-Admin
+- `examples/admin_app.py` – usage with Flask-Admin (in-memory store)
+- `examples/sqla_app.py` – SQLAlchemy-backed payments with Flask-Admin
+- `examples/pagos_app.py` – **bring your own model** (`Pagos`) with Flask-Admin
 
 ## Tests
 
