@@ -32,6 +32,9 @@ dev = [
     "quart>=0.19",
 ]
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.hatch.version]
 path = "flask_merchants/version.py"
 
