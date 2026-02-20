@@ -39,8 +39,9 @@ Then pass the model to FlaskMerchants::
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import DateTime, Integer, String, Text, func
+from sqlalchemy import DateTime, Integer, JSON, Numeric, String, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -61,14 +62,14 @@ class PaymentMixin:
     """
 
     session_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
-    redirect_url: Mapped[str] = mapped_column(Text)
+    redirect_url: Mapped[str] = mapped_column(String(2048))
     provider: Mapped[str] = mapped_column(String(64))
-    amount: Mapped[str] = mapped_column(String(32))
+    amount: Mapped[Decimal] = mapped_column(Numeric(19, 4))
     currency: Mapped[str] = mapped_column(String(8))
     state: Mapped[str] = mapped_column(String(32), default="pending")
-    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
-    request_payload: Mapped[str] = mapped_column(Text, default="{}")
-    response_payload: Mapped[str] = mapped_column(Text, default="{}")
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    request_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    response_payload: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -84,24 +85,16 @@ class PaymentMixin:
 
     def to_dict(self) -> dict:
         """Return a plain-dict representation (mirrors the in-memory store format)."""
-        import json as _json
-
-        def _parse(value: str) -> dict:
-            try:
-                return _json.loads(value) if value else {}
-            except (ValueError, TypeError):
-                return {}
-
         return {
             "session_id": self.session_id,
             "redirect_url": self.redirect_url,
             "provider": self.provider,
-            "amount": self.amount,
+            "amount": f"{Decimal(self.amount):.2f}",
             "currency": self.currency,
             "state": self.state,
-            "metadata": _parse(self.metadata_json),
-            "request_payload": _parse(self.request_payload),
-            "response_payload": _parse(self.response_payload),
+            "metadata": self.metadata_json or {},
+            "request_payload": self.request_payload or {},
+            "response_payload": self.response_payload or {},
         }
 
 
@@ -117,12 +110,12 @@ class Payment(PaymentMixin, Base):
         session_id: Provider-issued session/payment ID (unique).
         redirect_url: Hosted-checkout URL the user was redirected to.
         provider: Provider key string (e.g. ``"dummy"``, ``"stripe"``).
-        amount: Payment amount stored as a decimal string (e.g. ``"19.99"``).
+        amount: Payment amount as a fixed-precision decimal.
         currency: ISO-4217 currency code (e.g. ``"USD"``).
         state: Payment lifecycle state (``"pending"``, ``"succeeded"``, …).
-        metadata_json: JSON-serialised metadata dict passed at checkout.
-        request_payload: JSON-serialised data sent to the provider.
-        response_payload: JSON-serialised raw response received from the provider.
+        metadata_json: Metadata dict passed at checkout.
+        request_payload: Data sent to the provider.
+        response_payload: Raw response received from the provider.
         created_at: Record creation timestamp (UTC).
         updated_at: Record last-update timestamp (UTC).
     """

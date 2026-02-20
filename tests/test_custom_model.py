@@ -5,6 +5,7 @@ and have FlaskMerchants store/retrieve payments through it.
 """
 
 import pytest
+from decimal import Decimal
 from flask import Flask
 from flask_admin import Admin
 from flask_sqlalchemy import SQLAlchemy
@@ -130,7 +131,7 @@ def test_save_session_uses_custom_model(pagos_client, pagos_app, pagos_db, Pagos
         record = pagos_db.session.query(Pagos).filter_by(session_id=session_id).first()
         assert record is not None
         assert record.state == "pending"
-        assert record.amount == "25.00"
+        assert record.amount == Decimal("25.00")
         assert record.__class__.__name__ == "Pagos"
 
 

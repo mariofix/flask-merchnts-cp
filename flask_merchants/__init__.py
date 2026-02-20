@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import merchants
@@ -224,12 +223,12 @@ class FlaskMerchants:
                 session_id=session.session_id,
                 redirect_url=session.redirect_url,
                 provider=session.provider,
-                amount=str(session.amount),
+                amount=session.amount,
                 currency=session.currency,
                 state="pending",
-                metadata_json=json.dumps(session.metadata or {}),
-                request_payload=json.dumps(req_payload),
-                response_payload=json.dumps(response_raw),
+                metadata_json=session.metadata or {},
+                request_payload=req_payload,
+                response_payload=response_raw,
             )
             self._db.session.add(record)
             self._db.session.commit()

@@ -1,6 +1,6 @@
 """Tests for flask_merchants.contrib.sqla (Flask-Admin SQLAlchemy ModelView)."""
 
-import json
+from decimal import Decimal
 
 import pytest
 from flask import Flask
@@ -108,8 +108,7 @@ def test_save_session_to_db(sqla_client, sqla_app, sqla_db):
         record = sqla_db.session.query(Payment).filter_by(session_id=session_id).first()
         assert record is not None
         assert record.state == "pending"
-        assert record.amount == "10.00"
-
+        assert record.amount == Decimal("10.00")
 
 def test_save_session_stores_request_payload(sqla_client, sqla_app, sqla_db):
     """Checkout stores the request payload as JSON in request_payload."""
@@ -123,9 +122,8 @@ def test_save_session_stores_request_payload(sqla_client, sqla_app, sqla_db):
 
         record = sqla_db.session.query(Payment).filter_by(session_id=session_id).first()
         assert record is not None
-        req = json.loads(record.request_payload)
-        assert req["amount"] == "7.00"
-        assert req["currency"] == "EUR"
+        assert record.request_payload["amount"] == "7.00"
+        assert record.request_payload["currency"] == "EUR"
 
 
 def test_save_session_stores_response_payload(sqla_client, sqla_app, sqla_db):
@@ -140,9 +138,8 @@ def test_save_session_stores_response_payload(sqla_client, sqla_app, sqla_db):
 
         record = sqla_db.session.query(Payment).filter_by(session_id=session_id).first()
         assert record is not None
-        # DummyProvider returns {"simulated": True}
-        response = json.loads(record.response_payload)
-        assert isinstance(response, dict)
+        # DummyProvider returns {"simulated": True}; response_payload is already a dict
+        assert isinstance(record.response_payload, dict)
 
 
 def test_update_state_in_db(sqla_client, sqla_app, sqla_db, sqla_ext):
