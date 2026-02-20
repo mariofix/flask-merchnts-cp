@@ -61,12 +61,23 @@ class FlaskMerchants:
 
     Usage – with a single custom SQLAlchemy model::
 
+        from flask import Flask
+        from flask_sqlalchemy import SQLAlchemy
+        from sqlalchemy import Integer
+        from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+        from flask_merchants import FlaskMerchants
         from flask_merchants.models import PaymentMixin
+
+        class Base(DeclarativeBase):
+            pass
+
+        db = SQLAlchemy(model_class=Base)
 
         class Pagos(PaymentMixin, db.Model):
             __tablename__ = "pagos"
             id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
+        app = Flask(__name__)
         ext = FlaskMerchants(app, db=db, model=Pagos)
 
     Usage – with multiple custom SQLAlchemy models in the same app::

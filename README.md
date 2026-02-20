@@ -72,6 +72,7 @@ Install the `db` extra and mix `PaymentMixin` into your own SQLAlchemy model.
 Pass it via `model=` to `FlaskMerchants`:
 
 ```python
+from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import Integer

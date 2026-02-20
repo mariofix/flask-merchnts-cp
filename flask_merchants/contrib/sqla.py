@@ -23,7 +23,7 @@ Example::
     db.init_app(app)
 
     admin = Admin(app, name="My Shop")
-    admin.add_view(PaymentModelView(Payment, db.session, name="Payments"))
+    admin.add_view(PaymentModelView(Payment, db.session, ext=ext, name="Payments"))
 
     with app.app_context():
         db.create_all()
