@@ -1,10 +1,33 @@
 """Tests for payment provider selection feature."""
 
 import pytest
+import merchants
 from flask import Flask
 from merchants.providers.dummy import DummyProvider
 
 from flask_merchants import FlaskMerchants
+
+
+# ---------------------------------------------------------------------------
+# Registry isolation
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def clean_merchants_registry():
+    """Save and restore the merchants provider registry around each test."""
+    import merchants.providers as _mp
+    saved = dict(_mp._REGISTRY)
+    yield
+    _mp._REGISTRY.clear()
+    _mp._REGISTRY.update(saved)
+
+
+# ---------------------------------------------------------------------------
+# Second DummyProvider subclass with a distinct key
+# ---------------------------------------------------------------------------
+
+class AltDummyProvider(DummyProvider):
+    key = "alt_dummy"
 
 
 # ---------------------------------------------------------------------------
@@ -13,19 +36,15 @@ from flask_merchants import FlaskMerchants
 
 @pytest.fixture
 def multi_provider_app():
-    """Flask app with two DummyProviders registered under different keys."""
-    provider_a = DummyProvider()
-    # Create a second DummyProvider variant by subclassing to give it a unique key
-    class AltDummyProvider(DummyProvider):
-        key = "alt_dummy"
-
-    provider_b = AltDummyProvider()
+    """Flask app with two providers registered via the merchants registry."""
+    merchants.register_provider(DummyProvider())
+    merchants.register_provider(AltDummyProvider())
 
     application = Flask(__name__)
     application.config["TESTING"] = True
     application.config["SECRET_KEY"] = "test-secret"
 
-    ext = FlaskMerchants(application, providers=[provider_a, provider_b])
+    ext = FlaskMerchants(application)
     application.extensions["merchants_ext"] = ext
     yield application
 
@@ -48,7 +67,7 @@ def test_list_providers_single(app):
     """Default (single DummyProvider) app lists one provider."""
     ext = app.extensions["merchants"]
     providers = ext.list_providers()
-    assert providers == ["dummy"]
+    assert "dummy" in providers
 
 
 def test_list_providers_multi(multi_ext):
@@ -56,7 +75,17 @@ def test_list_providers_multi(multi_ext):
     providers = multi_ext.list_providers()
     assert "dummy" in providers
     assert "alt_dummy" in providers
-    assert len(providers) == 2
+
+
+def test_list_providers_reflects_live_registry():
+    """list_providers() reflects providers registered after init_app."""
+    application = Flask(__name__)
+    application.config["TESTING"] = True
+    ext = FlaskMerchants(application)
+
+    # Register a new provider after init
+    merchants.register_provider(AltDummyProvider())
+    assert "alt_dummy" in ext.list_providers()
 
 
 def test_get_client_default(app):
@@ -72,6 +101,11 @@ def test_get_client_by_key(multi_ext):
     assert client_a is not client_b
 
 
+def test_get_client_by_key_cached(multi_ext):
+    """get_client returns the same cached client on repeated calls."""
+    assert multi_ext.get_client("alt_dummy") is multi_ext.get_client("alt_dummy")
+
+
 def test_get_client_unknown_key(multi_ext):
     """get_client with an unknown key raises KeyError."""
     with pytest.raises(KeyError, match="Unknown provider"):
@@ -83,12 +117,12 @@ def test_get_client_unknown_key(multi_ext):
 # ---------------------------------------------------------------------------
 
 def test_providers_endpoint_single(client):
-    """GET /merchants/providers returns the list of providers."""
+    """GET /merchants/providers returns at least 'dummy'."""
     resp = client.get("/merchants/providers")
     assert resp.status_code == 200
     data = resp.get_json()
     assert "providers" in data
-    assert data["providers"] == ["dummy"]
+    assert "dummy" in data["providers"]
 
 
 def test_providers_endpoint_multi(multi_client):
@@ -96,7 +130,8 @@ def test_providers_endpoint_multi(multi_client):
     resp = multi_client.get("/merchants/providers")
     assert resp.status_code == 200
     data = resp.get_json()
-    assert set(data["providers"]) == {"dummy", "alt_dummy"}
+    assert "dummy" in data["providers"]
+    assert "alt_dummy" in data["providers"]
 
 
 # ---------------------------------------------------------------------------
@@ -145,3 +180,17 @@ def test_checkout_provider_stored_in_request_payload(multi_client, multi_ext):
     session_id = resp.get_json()["session_id"]
     stored = multi_ext.get_session(session_id)
     assert stored["request_payload"]["provider"] == "alt_dummy"
+
+
+def test_checkout_provider_registered_after_init(app, ext):
+    """A provider registered after init_app is usable in checkout."""
+    merchants.register_provider(AltDummyProvider())
+    with app.test_client() as tc:
+        resp = tc.post(
+            "/merchants/checkout",
+            json={"amount": "1.00", "currency": "USD", "provider": "alt_dummy"},
+        )
+    assert resp.status_code == 200
+    session_id = resp.get_json()["session_id"]
+    stored = ext.get_session(session_id)
+    assert stored["provider"] == "alt_dummy"
