@@ -60,7 +60,14 @@ def create_blueprint(ext: "FlaskMerchants") -> Blueprint:
         except merchants.UserError as exc:
             return jsonify({"error": str(exc)}), 400
 
-        ext.save_session(session)
+        req_payload = {
+            "amount": amount,
+            "currency": currency,
+            "success_url": success_url,
+            "cancel_url": cancel_url,
+            "metadata": metadata,
+        }
+        ext.save_session(session, request_payload=req_payload)
 
         if request.is_json:
             return jsonify(

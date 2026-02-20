@@ -5,6 +5,7 @@ and have FlaskMerchants store/retrieve payments through it.
 """
 
 import pytest
+from decimal import Decimal
 from flask import Flask
 from flask_admin import Admin
 from flask_sqlalchemy import SQLAlchemy
@@ -84,12 +85,12 @@ def Pagos(pagos_app):
 def test_payment_mixin_fields(Pagos):
     """Pagos model inherits all required payment columns from PaymentMixin."""
     cols = {c.key for c in Pagos.__table__.columns}
-    for field in ("session_id", "redirect_url", "provider", "amount", "currency", "state", "metadata_json"):
+    for field in ("session_id", "redirect_url", "provider", "amount", "currency", "state", "metadata_json", "request_payload", "response_payload"):
         assert field in cols, f"Missing column: {field}"
 
 
 def test_payment_mixin_to_dict(Pagos):
-    """to_dict returns the expected keys."""
+    """to_dict returns the expected keys including payload fields."""
     p = Pagos(
         session_id="s1",
         redirect_url="http://example.com",
@@ -102,6 +103,8 @@ def test_payment_mixin_to_dict(Pagos):
     assert d["session_id"] == "s1"
     assert d["state"] == "pending"
     assert d["currency"] == "USD"
+    assert "request_payload" in d
+    assert "response_payload" in d
 
 
 def test_payment_mixin_repr(Pagos):
@@ -128,7 +131,7 @@ def test_save_session_uses_custom_model(pagos_client, pagos_app, pagos_db, Pagos
         record = pagos_db.session.query(Pagos).filter_by(session_id=session_id).first()
         assert record is not None
         assert record.state == "pending"
-        assert record.amount == "25.00"
+        assert record.amount == Decimal("25.00")
         assert record.__class__.__name__ == "Pagos"
 
 
