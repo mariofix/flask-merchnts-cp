@@ -57,7 +57,7 @@ class Pagos(PaymentMixin, db.Model):
 
 # ---------------------------------------------------------------------------
 # 2. Wire everything together.
-#    Pass model=Pagos so FlaskMerchants stores payments in the pagos table.
+#    Pass models=[Pagos] so FlaskMerchants stores payments in the pagos table.
 # ---------------------------------------------------------------------------
 
 app = Flask(__name__)
@@ -66,7 +66,7 @@ app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///pagos.db"
 app.config["MERCHANTS_URL_PREFIX"] = "/merchants"
 
 # DummyProvider is used by default – no credentials needed for local dev.
-ext = FlaskMerchants(app, db=db, model=Pagos)
+ext = FlaskMerchants(app, db=db, models=[Pagos])
 db.init_app(app)
 
 # ---------------------------------------------------------------------------

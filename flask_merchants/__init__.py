@@ -78,7 +78,7 @@ class FlaskMerchants:
             id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
         app = Flask(__name__)
-        ext = FlaskMerchants(app, db=db, model=Pagos)
+        ext = FlaskMerchants(app, db=db, models=[Pagos])
 
     Usage – with multiple custom SQLAlchemy models in the same app::
 
@@ -118,12 +118,10 @@ class FlaskMerchants:
         URL prefix for the blueprint (default: ``"/merchants"``).
     """
 
-    def __init__(self, app=None, *, provider=None, db=None, model=None, models=None) -> None:
+    def __init__(self, app=None, *, provider=None, db=None, models=None) -> None:
         self._provider = provider
         self._db = db
-        self._models: list = list(models) if models is not None else (
-            [model] if model is not None else []
-        )
+        self._models: list = list(models) if models is not None else []
         self._client: merchants.Client | None = None
         # Simple in-memory payment store: {payment_id: dict}
         # Used when no SQLAlchemy db is provided.

@@ -69,7 +69,7 @@ pip install "flask-merchants[quart]"
 ### Bring your own model
 
 Install the `db` extra and mix `PaymentMixin` into your own SQLAlchemy model.
-Pass it via `model=` to `FlaskMerchants`:
+Pass it via `models=` to `FlaskMerchants`:
 
 ```python
 from flask import Flask
@@ -90,7 +90,7 @@ class Pagos(PaymentMixin, db.Model):
     # add your own columns here …
 
 app = Flask(__name__)
-ext = FlaskMerchants(app, db=db, model=Pagos)
+ext = FlaskMerchants(app, db=db, models=[Pagos])
 ```
 
 ### Multiple payment models in the same app
