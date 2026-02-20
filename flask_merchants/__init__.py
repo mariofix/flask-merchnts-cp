@@ -13,6 +13,8 @@ from flask_merchants.version import __version__
 __all__ = ["FlaskMerchants"]
 
 
+
+
 def _is_quart_app(app) -> bool:
     """Return ``True`` when *app* is a :class:`quart.Quart` instance."""
     try:
@@ -116,13 +118,26 @@ class FlaskMerchants:
         When ``None`` (default) signature verification is skipped.
     ``MERCHANTS_URL_PREFIX``
         URL prefix for the blueprint (default: ``"/merchants"``).
+
+    Multiple providers example::
+
+        from merchants.providers.dummy import DummyProvider
+
+        ext = FlaskMerchants(app, providers=[DummyProvider(), DummyProvider(base_url="https://other.example.com")])
+
+        # In checkout, pass ``provider`` field to select the provider:
+        # POST /merchants/checkout  {"amount": "9.99", "currency": "USD", "provider": "dummy"}
+
     """
 
-    def __init__(self, app=None, *, provider=None, db=None, models=None) -> None:
+    def __init__(self, app=None, *, provider=None, providers=None, db=None, models=None) -> None:
         self._provider = provider
+        self._providers: list = list(providers) if providers is not None else []
         self._db = db
         self._models: list = list(models) if models is not None else []
         self._client: merchants.Client | None = None
+        # Dict of clients keyed by provider key string.
+        self._clients: dict[str, merchants.Client] = {}
         # Simple in-memory payment store: {payment_id: dict}
         # Used when no SQLAlchemy db is provided.
         self._store: dict[str, dict[str, Any]] = {}
@@ -136,8 +151,18 @@ class FlaskMerchants:
 
     def init_app(self, app) -> None:
         """Initialise the extension against *app* (Flask or Quart)."""
-        provider = self._provider or DummyProvider()
-        self._client = merchants.Client(provider=provider)
+        # Build the ordered list of providers
+        all_providers: list = list(self._providers)
+        if self._provider is not None:
+            # Single-provider shortcut takes precedence as the default
+            all_providers.insert(0, self._provider)
+        if not all_providers:
+            all_providers = [DummyProvider()]
+
+        # Create one Client per provider, keyed by provider.key
+        self._clients = {p.key: merchants.Client(provider=p) for p in all_providers}
+        # Default client is the first registered provider
+        self._client = next(iter(self._clients.values()))
 
         app.config.setdefault("MERCHANTS_WEBHOOK_SECRET", None)
         app.config.setdefault("MERCHANTS_URL_PREFIX", "/merchants")
@@ -160,12 +185,31 @@ class FlaskMerchants:
 
     @property
     def client(self) -> merchants.Client:
-        """The underlying :class:`merchants.Client` instance."""
+        """The underlying :class:`merchants.Client` instance (default provider)."""
         if self._client is None:
             raise RuntimeError(
                 "FlaskMerchants extension not initialised. Call init_app(app) first."
             )
         return self._client
+
+    def list_providers(self) -> list[str]:
+        """Return a list of registered provider key strings."""
+        return list(self._clients.keys())
+
+    def get_client(self, provider_key: str | None = None) -> merchants.Client:
+        """Return the :class:`merchants.Client` for *provider_key*.
+
+        When *provider_key* is ``None`` (or omitted) the default client
+        (first registered provider) is returned.
+
+        Raises:
+            KeyError: If *provider_key* is not registered.
+        """
+        if provider_key is None:
+            return self.client
+        if provider_key not in self._clients:
+            raise KeyError(f"Unknown provider: {provider_key!r}")
+        return self._clients[provider_key]
 
     def _get_model_classes(self) -> list:
         """Return the list of all registered model classes.

@@ -58,11 +58,18 @@ def create_async_blueprint(ext: "FlaskMerchants"):
         else:
             metadata = {}
 
+        provider_key = data.get("provider") or None
+
+        try:
+            client = ext.get_client(provider_key)
+        except KeyError:
+            return jsonify({"error": f"Unknown provider: {provider_key!r}"}), 400
+
         success_url = url_for("merchants.success", _external=True)
         cancel_url = url_for("merchants.cancel", _external=True)
 
         try:
-            session = ext.client.payments.create_checkout(
+            session = client.payments.create_checkout(
                 amount=amount,
                 currency=currency,
                 success_url=success_url,
@@ -79,6 +86,8 @@ def create_async_blueprint(ext: "FlaskMerchants"):
             "cancel_url": cancel_url,
             "metadata": metadata,
         }
+        if provider_key:
+            req_payload["provider"] = provider_key
         ext.save_session(session, request_payload=req_payload)
 
         if json_data is not None:
@@ -89,6 +98,15 @@ def create_async_blueprint(ext: "FlaskMerchants"):
                 }
             )
         return redirect(session.redirect_url)
+
+    # ------------------------------------------------------------------
+    # Providers – list available payment providers
+    # ------------------------------------------------------------------
+
+    @bp.route("/providers", methods=["GET"])
+    async def providers():
+        """Return the list of registered payment provider keys."""
+        return jsonify({"providers": ext.list_providers()})
 
     # ------------------------------------------------------------------
     # Success / cancel landing pages
