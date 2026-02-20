@@ -33,7 +33,7 @@ Or bring your own model by mixing in :class:`PaymentMixin`::
 
 Then pass the model to FlaskMerchants::
 
-    ext = FlaskMerchants(app, db=db, model=Pagos)
+    ext = FlaskMerchants(app, db=db, models=[Pagos])
 """
 
 from __future__ import annotations
