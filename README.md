@@ -45,9 +45,8 @@ ext = FlaskMerchants(app)  # uses DummyProvider by default
 
 ### Bring your own model
 
-Install the `db` extra and mix :class:`~flask_merchants.models.PaymentMixin`
-into your own SQLAlchemy model.  Pass it via `model=` to
-:class:`~flask_merchants.FlaskMerchants`:
+Install the `db` extra and mix `PaymentMixin` into your own SQLAlchemy model.
+Pass it via `model=` to `FlaskMerchants`:
 
 ```python
 from flask_sqlalchemy import SQLAlchemy
@@ -70,14 +69,42 @@ app = Flask(__name__)
 ext = FlaskMerchants(app, db=db, model=Pagos)
 ```
 
-From Flask-Admin you can then **Refund**, **Cancel**, and **Sync** payments:
+### Multiple payment models in the same app
+
+A **single** `FlaskMerchants` instance can manage any number of models at once
+using `models=`:
+
+```python
+class Pagos(PaymentMixin, db.Model):
+    __tablename__ = "pagos"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+class Paiements(PaymentMixin, db.Model):
+    __tablename__ = "paiements"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+ext = FlaskMerchants(app, db=db, models=[Pagos, Paiements])
+
+# Direct a checkout to a specific model:
+session = ext.client.payments.create_checkout(...)
+ext.save_session(session, model_class=Paiements)
+
+# get_session / update_state / refund_session / cancel_session all search
+# across every registered model automatically.
+
+# all_sessions() returns every record from all models combined.
+# all_sessions(model_class=Pagos) filters to a single model.
+```
+
+Add a separate Flask-Admin view for each model, all backed by the same `ext`:
 
 ```python
 from flask_merchants.contrib.sqla import PaymentModelView
 from flask_admin import Admin
 
 admin = Admin(app)
-admin.add_view(PaymentModelView(Pagos, db.session, ext=ext, name="Pagos"))
+admin.add_view(PaymentModelView(Pagos,     db.session, ext=ext, name="Pagos",     endpoint="pagos"))
+admin.add_view(PaymentModelView(Paiements, db.session, ext=ext, name="Paiements", endpoint="paiements"))
 ```
 
 ### Flask-Admin (optional)
@@ -98,6 +125,7 @@ See the `examples/` directory:
 - `examples/admin_app.py` – usage with Flask-Admin (in-memory store)
 - `examples/sqla_app.py` – SQLAlchemy-backed payments with Flask-Admin
 - `examples/pagos_app.py` – **bring your own model** (`Pagos`) with Flask-Admin
+- `examples/multi_model_app.py` – **multiple models** (`Pagos` + `Paiements`) with one `ext`
 
 ## Tests
 

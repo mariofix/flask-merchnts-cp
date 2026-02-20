@@ -60,7 +60,7 @@ class FlaskMerchants:
         ext = FlaskMerchants(app, db=db)
         db.init_app(app)
 
-    Usage – with a custom SQLAlchemy model (bring your own table)::
+    Usage – with a single custom SQLAlchemy model::
 
         from flask_merchants.models import PaymentMixin
 
@@ -69,6 +69,27 @@ class FlaskMerchants:
             id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
         ext = FlaskMerchants(app, db=db, model=Pagos)
+
+    Usage – with multiple custom SQLAlchemy models in the same app::
+
+        class Pagos(PaymentMixin, db.Model):
+            __tablename__ = "pagos"
+            id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+        class Paiements(PaymentMixin, db.Model):
+            __tablename__ = "paiements"
+            id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+        ext = FlaskMerchants(app, db=db, models=[Pagos, Paiements])
+
+        # Direct a checkout to a specific model:
+        session = ext.client.payments.create_checkout(...)
+        ext.save_session(session, model_class=Pagos)
+        ext.save_session(session2, model_class=Paiements)
+
+        # get_session / update_state search across all models automatically.
+        # all_sessions() returns records from all models combined.
+        # all_sessions(model_class=Pagos) returns only Pagos records.
 
     Usage – with Quart (async)::
 
@@ -87,10 +108,15 @@ class FlaskMerchants:
         URL prefix for the blueprint (default: ``"/merchants"``).
     """
 
-    def __init__(self, app=None, *, provider=None, db=None, model=None) -> None:
+    def __init__(self, app=None, *, provider=None, db=None, model=None, models=None) -> None:
         self._provider = provider
         self._db = db
-        self._model = model  # optional custom model class (must use PaymentMixin)
+        # Single model (backward compat) or list of models.
+        # _models always holds the canonical list; _model is kept for compat.
+        self._model = model
+        self._models: list = list(models) if models is not None else (
+            [model] if model is not None else []
+        )
         self._client: merchants.Client | None = None
         # Simple in-memory payment store: {payment_id: dict}
         # Used when no SQLAlchemy db is provided.
@@ -136,27 +162,47 @@ class FlaskMerchants:
             )
         return self._client
 
+    def _get_model_classes(self) -> list:
+        """Return the list of all registered model classes.
+
+        Falls back to the built-in :class:`~flask_merchants.models.Payment`
+        when no custom models have been registered.
+        """
+        if self._models:
+            return self._models
+        from flask_merchants.models import Payment
+        return [Payment]
+
     @property
     def _payment_model(self):
-        """Return the model class used for DB-backed storage.
+        """Return the *default* model class (first in the list).
 
-        Returns the custom model passed as ``model=`` to the constructor,
-        or falls back to the built-in :class:`~flask_merchants.models.Payment`.
+        Kept for backward compatibility with code that references a single model.
         """
-        if self._model is not None:
-            return self._model
-        from flask_merchants.models import Payment
-        return Payment
+        return self._get_model_classes()[0]
 
     # ------------------------------------------------------------------
     # Payment store helpers
     # ------------------------------------------------------------------
 
-    def save_session(self, session: merchants.CheckoutSession) -> None:
+    def save_session(
+        self,
+        session: merchants.CheckoutSession,
+        *,
+        model_class=None,
+    ) -> None:
         """Persist a :class:`~merchants.CheckoutSession`.
 
         When a SQLAlchemy *db* was provided the record is saved to the
         database; otherwise it is kept in the in-memory store.
+
+        Args:
+            session: The checkout session to persist.
+            model_class: The model class to store the record in.
+                Defaults to the first registered model (or the built-in
+                :class:`~flask_merchants.models.Payment`).  Use this when
+                you have multiple models registered and need to direct a
+                payment to a specific table.
         """
         data = {
             "session_id": session.session_id,
@@ -169,8 +215,8 @@ class FlaskMerchants:
         }
 
         if self._db is not None:
-            model_cls = self._payment_model
-            record = model_cls(
+            cls = model_class if model_class is not None else self._payment_model
+            record = cls(
                 session_id=session.session_id,
                 redirect_url=session.redirect_url,
                 provider=session.provider,
@@ -186,39 +232,46 @@ class FlaskMerchants:
         self._store[session.session_id] = data
 
     def get_session(self, payment_id: str) -> dict[str, Any] | None:
-        """Return stored data for *payment_id*, or ``None``."""
+        """Return stored data for *payment_id*, or ``None``.
+
+        When multiple models are registered, all of them are searched in
+        registration order and the first match is returned.
+        """
         if self._db is not None:
-            model_cls = self._payment_model
-            record = (
-                self._db.session.query(model_cls)
-                .filter_by(session_id=payment_id)
-                .first()
-            )
-            if record is not None:
-                return record.to_dict()
+            for model_cls in self._get_model_classes():
+                record = (
+                    self._db.session.query(model_cls)
+                    .filter_by(session_id=payment_id)
+                    .first()
+                )
+                if record is not None:
+                    return record.to_dict()
             return None
         return self._store.get(payment_id)
 
     def update_state(self, payment_id: str, state: str) -> bool:
-        """Update the stored state for *payment_id*. Returns ``True`` on success."""
+        """Update the stored state for *payment_id*. Returns ``True`` on success.
+
+        When multiple models are registered, all of them are searched in
+        registration order; the first match is updated.
+        """
         if self._db is not None:
-            model_cls = self._payment_model
-            record = (
-                self._db.session.query(model_cls)
-                .filter_by(session_id=payment_id)
-                .first()
-            )
-            if record is None:
-                # Fall back to in-memory
-                if payment_id not in self._store:
-                    return False
-                self._store[payment_id]["state"] = state
-                return True
-            record.state = state
-            self._db.session.commit()
-            # Keep in-memory copy in sync
-            if payment_id in self._store:
-                self._store[payment_id]["state"] = state
+            for model_cls in self._get_model_classes():
+                record = (
+                    self._db.session.query(model_cls)
+                    .filter_by(session_id=payment_id)
+                    .first()
+                )
+                if record is not None:
+                    record.state = state
+                    self._db.session.commit()
+                    if payment_id in self._store:
+                        self._store[payment_id]["state"] = state
+                    return True
+            # Not found in any model – fall back to in-memory
+            if payment_id not in self._store:
+                return False
+            self._store[payment_id]["state"] = state
             return True
 
         if payment_id not in self._store:
@@ -251,10 +304,19 @@ class FlaskMerchants:
         stored["state"] = status.state.value
         return stored
 
-    def all_sessions(self) -> list[dict[str, Any]]:
-        """Return all stored payment sessions."""
+    def all_sessions(self, *, model_class=None) -> list[dict[str, Any]]:
+        """Return all stored payment sessions.
+
+        Args:
+            model_class: When provided, return records only from that model
+                class.  When omitted, records from **all** registered models
+                are returned combined.
+        """
         if self._db is not None:
-            model_cls = self._payment_model
-            records = self._db.session.query(model_cls).all()
-            return [r.to_dict() for r in records]
+            classes = [model_class] if model_class is not None else self._get_model_classes()
+            result = []
+            for cls in classes:
+                result.extend(r.to_dict() for r in self._db.session.query(cls).all())
+            return result
         return list(self._store.values())
+
