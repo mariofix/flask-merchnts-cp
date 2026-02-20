@@ -30,6 +30,8 @@ def create_blueprint(ext: "FlaskMerchants") -> Blueprint:
         * ``amount`` – decimal string (e.g. ``"19.99"``)
         * ``currency`` – ISO-4217 code (e.g. ``"USD"``)
         * ``metadata`` – optional JSON object / form JSON string
+        * ``provider`` – optional provider key string (e.g. ``"dummy"``).
+          Defaults to the first registered provider.
         """
         data = request.get_json(silent=True) or request.form
 
@@ -46,11 +48,18 @@ def create_blueprint(ext: "FlaskMerchants") -> Blueprint:
         else:
             metadata = {}
 
+        provider_key = data.get("provider") or None
+
+        try:
+            client = ext.get_client(provider_key)
+        except KeyError:
+            return jsonify({"error": f"Unknown provider: {provider_key!r}"}), 400
+
         success_url = url_for("merchants.success", _external=True)
         cancel_url = url_for("merchants.cancel", _external=True)
 
         try:
-            session = ext.client.payments.create_checkout(
+            session = client.payments.create_checkout(
                 amount=amount,
                 currency=currency,
                 success_url=success_url,
@@ -67,6 +76,8 @@ def create_blueprint(ext: "FlaskMerchants") -> Blueprint:
             "cancel_url": cancel_url,
             "metadata": metadata,
         }
+        if provider_key:
+            req_payload["provider"] = provider_key
         ext.save_session(session, request_payload=req_payload)
 
         if request.is_json:
@@ -77,6 +88,15 @@ def create_blueprint(ext: "FlaskMerchants") -> Blueprint:
                 }
             )
         return redirect(session.redirect_url)
+
+    # ------------------------------------------------------------------
+    # Providers – list available payment providers
+    # ------------------------------------------------------------------
+
+    @bp.route("/providers", methods=["GET"])
+    def providers():
+        """Return the list of registered payment provider keys."""
+        return jsonify({"providers": ext.list_providers()})
 
     # ------------------------------------------------------------------
     # Success / cancel landing pages
