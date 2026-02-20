@@ -1,19 +1,23 @@
 # flask-merchants
 
-A Flask extension for the [merchants](https://github.com/mariofix/merchnts-cp) hosted-checkout payment SDK.
+A Flask/Quart extension for the [merchants](https://github.com/mariofix/merchnts-cp) hosted-checkout payment SDK.
 
 ## Features
 
-- Flask extension class (`FlaskMerchants`) with `init_app` support
+- Flask/Quart extension class (`FlaskMerchants`) with `init_app` support
 - Blueprint with routes for checkout, success/cancel landing pages, payment status, and webhooks
 - Uses `DummyProvider` by default – no credentials needed for local development
 - Optional Flask-Admin views (under `flask_merchants.contrib.admin`) to list and update payment statuses
+- Optional SQLAlchemy-backed Flask-Admin view (`flask_merchants.contrib.sqla`) with bulk refund/cancel/sync actions
+- Quart (async) support – async blueprint selected automatically when a `quart.Quart` app is detected
 
 ## Installation
 
 ```bash
-pip install flask-merchants          # core
-pip install "flask-merchants[admin]" # with Flask-Admin support
+pip install flask-merchants           # core
+pip install "flask-merchants[admin]"  # with Flask-Admin support
+pip install "flask-merchants[db]"     # with SQLAlchemy + Flask-Admin support
+pip install "flask-merchants[quart]"  # with Quart (async) support
 ```
 
 ## Quick Start
@@ -24,6 +28,25 @@ from flask_merchants import FlaskMerchants
 
 app = Flask(__name__)
 ext = FlaskMerchants(app)  # uses DummyProvider by default
+```
+
+### Quart (async)
+
+`FlaskMerchants` detects a `quart.Quart` application automatically and registers
+an async blueprint instead:
+
+```python
+from quart import Quart
+from flask_merchants import FlaskMerchants
+
+app = Quart(__name__)
+ext = FlaskMerchants(app)   # async blueprint selected automatically
+```
+
+Requires the `quart` extra:
+
+```bash
+pip install "flask-merchants[quart]"
 ```
 
 ### Available routes (default prefix `/merchants`)
@@ -126,6 +149,7 @@ See the `examples/` directory:
 - `examples/sqla_app.py` – SQLAlchemy-backed payments with Flask-Admin
 - `examples/pagos_app.py` – **bring your own model** (`Pagos`) with Flask-Admin
 - `examples/multi_model_app.py` – **multiple models** (`Pagos` + `Paiements`) with one `ext`
+- `examples/quart_app.py` – Quart (async) usage with DummyProvider
 
 ## Tests
 
