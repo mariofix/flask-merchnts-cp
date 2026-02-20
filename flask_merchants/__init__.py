@@ -12,10 +12,6 @@ from flask_merchants.version import __version__
 
 __all__ = ["FlaskMerchants"]
 
-# Sentinel used by init_app to distinguish "caller did not pass this argument"
-# from an explicit None (which is a valid value for db, for example).
-_UNSET = object()
-
 
 def _is_quart_app(app) -> bool:
     """Return ``True`` when *app* is a :class:`quart.Quart` instance."""
@@ -172,10 +168,10 @@ class FlaskMerchants:
         self,
         app,
         *,
-        provider=_UNSET,
-        providers=_UNSET,
-        db=_UNSET,
-        models=_UNSET,
+        provider=None,
+        providers=None,
+        db=None,
+        models=None,
     ) -> None:
         """Initialise the extension against *app* (Flask or Quart).
 
@@ -215,15 +211,14 @@ class FlaskMerchants:
         pre-registered externally) a :class:`~merchants.providers.dummy.DummyProvider`
         is registered as a safe default for local development.
         """
-        # Apply overrides – only update the stored value when the caller
-        # explicitly passed the argument (guard against the default sentinel).
-        if provider is not _UNSET:
+        # Update stored config when non-None values are passed.
+        if provider is not None:
             self._provider = provider
-        if providers is not _UNSET:
+        if providers is not None:
             self._providers = list(providers)
-        if db is not _UNSET:
+        if db is not None:
             self._db = db
-        if models is not _UNSET:
+        if models is not None:
             self._models = list(models)
         # Register explicitly-supplied providers into the merchants registry.
         all_providers: list = list(self._providers)
