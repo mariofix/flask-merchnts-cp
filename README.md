@@ -4,8 +4,9 @@ A Flask/Quart extension for the [merchants](https://github.com/mariofix/merchnts
 
 ## Features
 
-- Flask/Quart extension class (`FlaskMerchants`) with `init_app` support
-- Blueprint with routes for checkout, success/cancel landing pages, payment status, and webhooks
+- Flask/Quart extension class (`FlaskMerchants`) with full `init_app` support – pass `db`, `models`, `provider`, and `providers` either at construction time or deferred to `init_app` (application-factory friendly)
+- Blueprint with routes for checkout, success/cancel landing pages, payment status, webhooks, and provider listing
+- Multiple payment-provider support – register providers by name via the `merchants` SDK registry and select one per checkout request
 - Uses `DummyProvider` by default – no credentials needed for local development
 - Optional Flask-Admin views (under `flask_merchants.contrib.admin`) to list and update payment statuses
 - Optional SQLAlchemy-backed Flask-Admin view (`flask_merchants.contrib.sqla`) with bulk refund/cancel/sync actions
@@ -54,6 +55,7 @@ pip install "flask-merchants[quart]"
 | Method | Path | Description |
 |--------|------|-------------|
 | GET/POST | `/merchants/checkout` | Create a checkout session |
+| GET | `/merchants/providers` | List available payment providers |
 | GET | `/merchants/success` | Success landing page |
 | GET | `/merchants/cancel` | Cancel landing page |
 | GET | `/merchants/status/<payment_id>` | Live payment status |
@@ -65,6 +67,78 @@ pip install "flask-merchants[quart]"
 |-----|---------|-------------|
 | `MERCHANTS_URL_PREFIX` | `/merchants` | URL prefix for the blueprint |
 | `MERCHANTS_WEBHOOK_SECRET` | `None` | HMAC-SHA256 secret for webhook verification |
+
+### Application factory pattern
+
+All configuration parameters (`db`, `models`, `provider`, `providers`) can be
+passed either to `FlaskMerchants()` at construction time **or** to `init_app()`
+later – whichever fits your project layout.  Both styles are equivalent:
+
+```python
+# Style A – everything up front
+from flask import Flask
+from flask_merchants import FlaskMerchants
+
+app = Flask(__name__)
+ext = FlaskMerchants(app, db=db, models=[Pagos])
+```
+
+```python
+# Style B – config deferred to init_app (application-factory pattern)
+# extensions.py
+from flask_merchants import FlaskMerchants
+merchants_ext = FlaskMerchants()
+
+# app_factory.py
+def create_app():
+    app = Flask(__name__)
+    db = SQLAlchemy(model_class=Base)
+    merchants_ext.init_app(app, db=db, models=[Pagos], provider=MyProvider())
+    return app
+```
+
+Parameters supplied to `init_app` override any value previously set in `__init__`.
+
+### Payment provider selection
+
+Register one or more providers via the `merchants` SDK registry, then select
+one per checkout request using the `provider` field:
+
+```python
+import merchants
+from merchants.providers.dummy import DummyProvider
+
+merchants.register_provider(DummyProvider())
+# merchants.register_provider(StripeProvider(api_key="sk_test_..."))
+
+app = Flask(__name__)
+ext = FlaskMerchants(app)
+```
+
+You can also pass providers directly through the extension:
+
+```python
+ext = FlaskMerchants(app, provider=DummyProvider())
+# or a list:
+ext = FlaskMerchants(app, providers=[DummyProvider(), StripeProvider(api_key="sk_test_...")])
+```
+
+List available providers at runtime:
+
+```
+GET /merchants/providers
+→ {"providers": ["dummy", "stripe"]}
+```
+
+Select a provider at checkout:
+
+```
+POST /merchants/checkout
+{"amount": "19.99", "currency": "USD", "provider": "stripe"}
+```
+
+If `provider` is omitted the first registered provider is used.  An unknown
+provider key returns HTTP 400.
 
 ### Bring your own model
 
