@@ -12,6 +12,10 @@ from flask_merchants.version import __version__
 
 __all__ = ["FlaskMerchants"]
 
+# Sentinel used by init_app to distinguish "caller did not pass this argument"
+# from an explicit None (which is a valid value for db, for example).
+_UNSET = object()
+
 
 def _is_quart_app(app) -> bool:
     """Return ``True`` when *app* is a :class:`quart.Quart` instance."""
@@ -26,12 +30,22 @@ def _is_quart_app(app) -> bool:
 class FlaskMerchants:
     """Flask/Quart extension that wires the *merchants* SDK into an application.
 
-    Usage – application factory pattern::
+    Usage – application factory pattern (all config passed to ``init_app``)::
 
         from flask import Flask
         from flask_merchants import FlaskMerchants
 
-        merchants_ext = FlaskMerchants()
+        merchants_ext = FlaskMerchants()          # extensions.py
+
+        def create_app():
+            app = Flask(__name__)
+            db = SQLAlchemy(model_class=Base)
+            merchants_ext.init_app(app, db=db, models=[Pagos], provider=MyProvider())
+            return app
+
+    Usage – application factory pattern (config split between constructor and ``init_app``)::
+
+        merchants_ext = FlaskMerchants(db=db, models=[Pagos])   # extensions.py
 
         def create_app():
             app = Flask(__name__)
@@ -154,17 +168,63 @@ class FlaskMerchants:
     # Initialisation
     # ------------------------------------------------------------------
 
-    def init_app(self, app) -> None:
+    def init_app(
+        self,
+        app,
+        *,
+        provider=_UNSET,
+        providers=_UNSET,
+        db=_UNSET,
+        models=_UNSET,
+    ) -> None:
         """Initialise the extension against *app* (Flask or Quart).
 
-        Any providers supplied via the ``provider`` / ``providers`` constructor
-        arguments are registered into the ``merchants`` global registry so that
-        they become discoverable via :func:`merchants.list_providers`.
+        All keyword arguments are optional.  When supplied they **override**
+        the corresponding values that were passed to :meth:`__init__`, which
+        enables the full application-factory pattern where configuration is
+        deferred to ``init_app``::
+
+            # extensions.py
+            merchants_ext = FlaskMerchants()
+
+            # app_factory.py
+            def create_app():
+                app = Flask(__name__)
+                db = SQLAlchemy(model_class=Base)
+                merchants_ext.init_app(app, db=db, models=[Pagos], provider=MyProvider())
+                return app
+
+        Args:
+            app: The Flask (or Quart) application instance.
+            provider: A single :class:`~merchants.Provider` instance to use as
+                the default provider.  Overrides the value passed to ``__init__``.
+            providers: A list of :class:`~merchants.Provider` instances to
+                register.  Overrides the value passed to ``__init__``.
+            db: A Flask-SQLAlchemy ``SQLAlchemy`` instance.  When supplied,
+                payment records are persisted to the database.  Overrides the
+                value passed to ``__init__``.
+            models: A list of SQLAlchemy model classes (each mixing in
+                :class:`~flask_merchants.models.PaymentMixin`).  Overrides the
+                value passed to ``__init__``.
+
+        Any providers supplied via *provider* / *providers* are registered into
+        the ``merchants`` global registry so that they become discoverable via
+        :func:`merchants.list_providers`.
 
         If no providers are registered at all (neither explicitly passed nor
         pre-registered externally) a :class:`~merchants.providers.dummy.DummyProvider`
         is registered as a safe default for local development.
         """
+        # Apply overrides – only update the stored value when the caller
+        # explicitly passed the argument (guard against the default sentinel).
+        if provider is not _UNSET:
+            self._provider = provider
+        if providers is not _UNSET:
+            self._providers = list(providers)
+        if db is not _UNSET:
+            self._db = db
+        if models is not _UNSET:
+            self._models = list(models)
         # Register explicitly-supplied providers into the merchants registry.
         all_providers: list = list(self._providers)
         if self._provider is not None:
