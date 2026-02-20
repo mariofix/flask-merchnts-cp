@@ -111,9 +111,6 @@ class FlaskMerchants:
     def __init__(self, app=None, *, provider=None, db=None, model=None, models=None) -> None:
         self._provider = provider
         self._db = db
-        # Single model (backward compat) or list of models.
-        # _models always holds the canonical list; _model is kept for compat.
-        self._model = model
         self._models: list = list(models) if models is not None else (
             [model] if model is not None else []
         )
@@ -175,10 +172,7 @@ class FlaskMerchants:
 
     @property
     def _payment_model(self):
-        """Return the *default* model class (first in the list).
-
-        Kept for backward compatibility with code that references a single model.
-        """
+        """Return the *default* model class (first in the list)."""
         return self._get_model_classes()[0]
 
     # ------------------------------------------------------------------
@@ -190,6 +184,7 @@ class FlaskMerchants:
         session: merchants.CheckoutSession,
         *,
         model_class=None,
+        request_payload: dict | None = None,
     ) -> None:
         """Persist a :class:`~merchants.CheckoutSession`.
 
@@ -203,7 +198,14 @@ class FlaskMerchants:
                 :class:`~flask_merchants.models.Payment`).  Use this when
                 you have multiple models registered and need to direct a
                 payment to a specific table.
+            request_payload: The data dict that was sent to the provider.
+                When provided it is serialised as JSON and stored on the
+                record.  Defaults to an empty dict.
         """
+        # session.raw holds the provider's raw response; guard against non-dict types
+        response_raw = session.raw if isinstance(session.raw, dict) else {}
+        req_payload = request_payload or {}
+
         data = {
             "session_id": session.session_id,
             "redirect_url": session.redirect_url,
@@ -212,6 +214,8 @@ class FlaskMerchants:
             "currency": session.currency,
             "metadata": session.metadata,
             "state": "pending",
+            "request_payload": req_payload,
+            "response_payload": response_raw,
         }
 
         if self._db is not None:
@@ -224,6 +228,8 @@ class FlaskMerchants:
                 currency=session.currency,
                 state="pending",
                 metadata_json=json.dumps(session.metadata or {}),
+                request_payload=json.dumps(req_payload),
+                response_payload=json.dumps(response_raw),
             )
             self._db.session.add(record)
             self._db.session.commit()

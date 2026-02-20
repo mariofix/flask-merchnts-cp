@@ -66,6 +66,8 @@ def test_payment_model_fields():
     assert "provider" in cols
     assert "amount" in cols
     assert "currency" in cols
+    assert "request_payload" in cols
+    assert "response_payload" in cols
 
 
 def test_payment_model_repr():
@@ -107,6 +109,40 @@ def test_save_session_to_db(sqla_client, sqla_app, sqla_db):
         assert record is not None
         assert record.state == "pending"
         assert record.amount == "10.00"
+
+
+def test_save_session_stores_request_payload(sqla_client, sqla_app, sqla_db):
+    """Checkout stores the request payload as JSON in request_payload."""
+    with sqla_app.app_context():
+        resp = sqla_client.post(
+            "/merchants/checkout",
+            json={"amount": "7.00", "currency": "EUR"},
+        )
+        assert resp.status_code == 200
+        session_id = resp.get_json()["session_id"]
+
+        record = sqla_db.session.query(Payment).filter_by(session_id=session_id).first()
+        assert record is not None
+        req = json.loads(record.request_payload)
+        assert req["amount"] == "7.00"
+        assert req["currency"] == "EUR"
+
+
+def test_save_session_stores_response_payload(sqla_client, sqla_app, sqla_db):
+    """Checkout stores the provider response as JSON in response_payload."""
+    with sqla_app.app_context():
+        resp = sqla_client.post(
+            "/merchants/checkout",
+            json={"amount": "3.00", "currency": "USD"},
+        )
+        assert resp.status_code == 200
+        session_id = resp.get_json()["session_id"]
+
+        record = sqla_db.session.query(Payment).filter_by(session_id=session_id).first()
+        assert record is not None
+        # DummyProvider returns {"simulated": True}
+        response = json.loads(record.response_payload)
+        assert isinstance(response, dict)
 
 
 def test_update_state_in_db(sqla_client, sqla_app, sqla_db, sqla_ext):

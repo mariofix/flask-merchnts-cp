@@ -67,6 +67,8 @@ class PaymentMixin:
     currency: Mapped[str] = mapped_column(String(8))
     state: Mapped[str] = mapped_column(String(32), default="pending")
     metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+    request_payload: Mapped[str] = mapped_column(Text, default="{}")
+    response_payload: Mapped[str] = mapped_column(Text, default="{}")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -83,10 +85,13 @@ class PaymentMixin:
     def to_dict(self) -> dict:
         """Return a plain-dict representation (mirrors the in-memory store format)."""
         import json as _json
-        try:
-            metadata = _json.loads(self.metadata_json) if self.metadata_json else {}
-        except (ValueError, TypeError):
-            metadata = {}
+
+        def _parse(value: str) -> dict:
+            try:
+                return _json.loads(value) if value else {}
+            except (ValueError, TypeError):
+                return {}
+
         return {
             "session_id": self.session_id,
             "redirect_url": self.redirect_url,
@@ -94,7 +99,9 @@ class PaymentMixin:
             "amount": self.amount,
             "currency": self.currency,
             "state": self.state,
-            "metadata": metadata,
+            "metadata": _parse(self.metadata_json),
+            "request_payload": _parse(self.request_payload),
+            "response_payload": _parse(self.response_payload),
         }
 
 
@@ -114,6 +121,8 @@ class Payment(PaymentMixin, Base):
         currency: ISO-4217 currency code (e.g. ``"USD"``).
         state: Payment lifecycle state (``"pending"``, ``"succeeded"``, …).
         metadata_json: JSON-serialised metadata dict passed at checkout.
+        request_payload: JSON-serialised data sent to the provider.
+        response_payload: JSON-serialised raw response received from the provider.
         created_at: Record creation timestamp (UTC).
         updated_at: Record last-update timestamp (UTC).
     """

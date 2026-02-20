@@ -72,7 +72,14 @@ def create_async_blueprint(ext: "FlaskMerchants"):
         except merchants.UserError as exc_:
             return jsonify({"error": str(exc_)}), 400
 
-        ext.save_session(session)
+        req_payload = {
+            "amount": amount,
+            "currency": currency,
+            "success_url": success_url,
+            "cancel_url": cancel_url,
+            "metadata": metadata,
+        }
+        ext.save_session(session, request_payload=req_payload)
 
         if json_data is not None:
             return jsonify(
