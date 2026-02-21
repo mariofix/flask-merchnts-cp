@@ -1,0 +1,67 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - sandbox
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # Run for all pushes to sandbox, but skip PRs opened by mariofix himself
+    if: github.event_name == 'push' || github.actor != 'mariofix'
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        # "latest" = newest stable release from PyPI
+        # "main"   = latest Flask code from the GitHub main branch
+        flask-version: ["latest", "main"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
+      - name: Install project with dev dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Upgrade to latest stable Flask release
+        if: matrix.flask-version == 'latest'
+        run: pip install --upgrade flask
+
+      - name: Install Flask from the main branch
+        if: matrix.flask-version == 'main'
+        run: pip install git+https://github.com/pallets/flask.git
+
+      - name: Install coverage
+        run: pip install coverage
+
+      - name: Run tests with coverage
+        run: coverage run -m pytest
+
+      - name: Upload partial coverage to Coveralls
+        uses: coverallsapp/github-action@v2
+        with:
+          parallel: true
+          flag-name: py${{ matrix.python-version }}-flask-${{ matrix.flask-version }}
+
+  coveralls-finish:
+    needs: test
+    runs-on: ubuntu-latest
+    if: always()
+    permissions:
+      contents: read
+    steps:
+      - name: Finalize Coveralls parallel build
+        uses: coverallsapp/github-action@v2
+        with:
+          parallel-finished: true

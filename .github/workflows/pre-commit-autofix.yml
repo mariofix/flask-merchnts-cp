@@ -1,0 +1,52 @@
+name: Pre-commit Autofix
+
+on:
+  push:
+    branches:
+      - main
+      - sandbox
+  workflow_dispatch:
+
+jobs:
+  autofix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Fetch full history so pre-commit can compare files
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pre-commit
+        run: pip install pre-commit
+
+      - name: Run pre-commit on all files
+        # Allow failure – hooks may modify files and exit non-zero
+        run: pre-commit run --all-files
+        continue-on-error: true
+
+      - name: Create pull request with auto-fixes
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "chore: apply pre-commit auto-fixes"
+          branch: pre-commit/autofix
+          delete-branch: true
+          title: "chore: pre-commit auto-fixes"
+          body: |
+            Automated pull request created by the **Pre-commit Autofix** workflow.
+
+            Pre-commit hooks found and fixed one or more issues (e.g. trailing
+            whitespace, missing newline at end of file, ruff lint/format fixes, …).
+
+            Please review the changes and merge when satisfied.
+          labels: |
+            automated
+            pre-commit
