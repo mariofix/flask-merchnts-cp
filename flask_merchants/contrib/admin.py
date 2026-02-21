@@ -322,8 +322,11 @@ class ProvidersView(BaseModelView):
     """Flask-Admin view that lists all payment providers registered with the application.
 
     Extends :class:`~flask_admin.model.BaseModelView` so the list page gains
-    built-in search, column sorting, and pagination consistent with other
-    model-backed views in the admin.
+    built-in search, column sorting, pagination, and detail views consistent
+    with other model-backed views in the admin.
+
+    The provider list is sourced directly from :func:`merchants.describe_providers`,
+    so no database call is needed.
 
     Args:
         ext: Initialised :class:`~flask_merchants.FlaskMerchants` extension instance.
@@ -336,10 +339,25 @@ class ProvidersView(BaseModelView):
     can_create = False
     can_edit = False
     can_delete = False
+    can_view_details = True
 
     # Column configuration
     column_list = [
         "key",
+        "name",
+        "version",
+        "base_url",
+        "auth_type",
+        "transport",
+        "payment_count",
+    ]
+    column_details_list = [
+        "key",
+        "name",
+        "author",
+        "version",
+        "description",
+        "url",
         "base_url",
         "auth_type",
         "auth_header",
@@ -347,10 +365,15 @@ class ProvidersView(BaseModelView):
         "transport",
         "payment_count",
     ]
-    column_searchable_list = ["key", "base_url", "auth_type"]
-    column_sortable_list = ["key", "payment_count"]
+    column_searchable_list = ["key", "name", "author"]
+    column_sortable_list = ["key", "name", "version", "payment_count"]
     column_labels = {
         "key": "Provider Key",
+        "name": "Name",
+        "author": "Author",
+        "version": "Version",
+        "description": "Description",
+        "url": "URL",
         "base_url": "Base URL",
         "auth_type": "Auth Type",
         "auth_header": "Auth Header",
@@ -384,18 +407,10 @@ class ProvidersView(BaseModelView):
     # ------------------------------------------------------------------
 
     def scaffold_list_columns(self) -> list[str]:
-        return [
-            "key",
-            "base_url",
-            "auth_type",
-            "auth_header",
-            "auth_masked_value",
-            "transport",
-            "payment_count",
-        ]
+        return ["key", "name", "version", "base_url", "auth_type", "transport", "payment_count"]
 
     def scaffold_sortable_columns(self) -> dict[str, str]:
-        return {"key": "key", "payment_count": "payment_count"}
+        return {"key": "key", "name": "name", "version": "version", "payment_count": "payment_count"}
 
     def scaffold_form(self):
         from wtforms import Form as WTForm
@@ -410,16 +425,20 @@ class ProvidersView(BaseModelView):
     def init_search(self) -> bool:
         return bool(self.column_searchable_list)
 
+    def _get_field_value(self, model, name):
+        if isinstance(model, dict):
+            return model.get(name)
+        return super()._get_field_value(model, name)
+
     def get_pk_value(self, model) -> str | None:
         if isinstance(model, dict):
             return model.get("key")
         return getattr(model, "key", None)
 
     def _build_providers_list(self) -> list[dict]:
-        """Build the enriched list of provider dicts from the merchants SDK."""
+        """Return enriched provider dicts combining :func:`merchants.describe_providers` info
+        with runtime client data (base_url, auth, transport, payment_count)."""
         import merchants as merchants_sdk
-
-        provider_keys = merchants_sdk.list_providers()
 
         all_payments = self._ext.all_sessions()
         payment_counts: dict[str, int] = {}
@@ -428,7 +447,8 @@ class ProvidersView(BaseModelView):
             payment_counts[pkey] = payment_counts.get(pkey, 0) + 1
 
         providers = []
-        for key in provider_keys:
+        for info in merchants_sdk.describe_providers():
+            key = info.key
             try:
                 client = self._ext.get_client(key)
                 base_url = (
@@ -445,7 +465,7 @@ class ProvidersView(BaseModelView):
 
             providers.append(
                 {
-                    "key": key,
+                    **info.model_dump(),
                     "base_url": base_url,
                     "auth_type": auth_info["type"],
                     "auth_header": auth_info["header"],
@@ -466,8 +486,8 @@ class ProvidersView(BaseModelView):
                 p
                 for p in providers
                 if search_lower in str(p.get("key", "")).lower()
-                or search_lower in str(p.get("base_url", "")).lower()
-                or search_lower in str(p.get("auth_type", "")).lower()
+                or search_lower in str(p.get("name", "")).lower()
+                or search_lower in str(p.get("author", "")).lower()
             ]
 
         if sort_field:

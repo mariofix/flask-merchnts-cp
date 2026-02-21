@@ -38,11 +38,12 @@
           {% elif c == 'base_url' %}
             <small>{{ row.base_url }}</small>
           {% elif c == 'auth_type' %}
-            <span class="badge badge-info">{{ row.auth_type }}</span>
-          {% elif c == 'auth_header' %}
-            <code>{{ row.auth_header }}</code>
-          {% elif c == 'auth_masked_value' %}
-            <code>{{ row.auth_masked_value }}</code>
+            <span class="badge badge-info"
+                  data-toggle="tooltip"
+                  data-placement="top"
+                  title="{{ row.auth_header }}: {{ row.auth_masked_value }}">
+              {{ row.auth_type }}
+            </span>
           {% elif c == 'transport' %}
             <small>{{ row.transport }}</small>
           {% elif c == 'payment_count' %}
@@ -65,4 +66,13 @@
     </tbody>
   </table>
 </div>
+{% endblock %}
+
+{% block tail %}
+{{ super() }}
+<script>
+  $(function () {
+    $('[data-toggle="tooltip"]').tooltip();
+  });
+</script>
 {% endblock %}
