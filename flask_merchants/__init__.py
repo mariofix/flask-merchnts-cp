@@ -145,10 +145,13 @@ class FlaskMerchants:
         URL prefix for the blueprint (default: ``"/merchants"``).
     """
 
-    def __init__(self, app=None, *, provider=None, providers=None, db=None, models=None, admin=None) -> None:
+    def __init__(self, app=None, *, provider=None, providers=None, db=None, model=None, models=None, admin=None) -> None:
         self._provider = provider
         self._providers: list = list(providers) if providers is not None else []
         self._db = db
+        # Accept model= (singular) as a convenience alias for models=[model]
+        if model is not None and models is None:
+            models = [model]
         self._models: list = list(models) if models is not None else []
         self._admin = admin
         self._client: merchants.Client | None = None
@@ -172,6 +175,7 @@ class FlaskMerchants:
         provider=None,
         providers=None,
         db=None,
+        model=None,
         models=None,
         admin=None,
     ) -> None:
@@ -225,6 +229,9 @@ class FlaskMerchants:
             self._providers = list(providers)
         if db is not None:
             self._db = db
+        # Accept model= (singular) as a convenience alias for models=[model]
+        if model is not None and models is None:
+            models = [model]
         if models is not None:
             self._models = list(models)
         if admin is not None:
