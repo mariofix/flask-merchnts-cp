@@ -4,11 +4,12 @@ A Flask/Quart extension for the [merchants](https://github.com/mariofix/merchnts
 
 ## Features
 
-- Flask/Quart extension class (`FlaskMerchants`) with full `init_app` support – pass `db`, `models`, `provider`, and `providers` either at construction time or deferred to `init_app` (application-factory friendly)
+- Flask/Quart extension class (`FlaskMerchants`) with full `init_app` support – pass `db`, `models`, `provider`, `providers`, and `admin` either at construction time or deferred to `init_app` (application-factory friendly)
 - Blueprint with routes for checkout, success/cancel landing pages, payment status, webhooks, and provider listing
 - Multiple payment-provider support – register providers by name via the `merchants` SDK registry and select one per checkout request
 - Uses `DummyProvider` by default – no credentials needed for local development
 - Optional Flask-Admin views (under `flask_merchants.contrib.admin`) to list and update payment statuses
+- **Automatic Flask-Admin integration** – pass `admin=` to `FlaskMerchants` to auto-register `PaymentView` and `ProvidersView` under the *Merchants* admin category with a single line
 - Optional SQLAlchemy-backed Flask-Admin view (`flask_merchants.contrib.sqla`) with bulk refund/cancel/sync actions
 - Quart (async) support – async blueprint selected automatically when a `quart.Quart` app is detected
 
@@ -70,7 +71,7 @@ pip install "flask-merchants[quart]"
 
 ### Application factory pattern
 
-All configuration parameters (`db`, `models`, `provider`, `providers`) can be
+All configuration parameters (`db`, `models`, `provider`, `providers`, `admin`) can be
 passed either to `FlaskMerchants()` at construction time **or** to `init_app()`
 later – whichever fits your project layout.  Both styles are equivalent:
 
@@ -98,6 +99,65 @@ def create_app():
 ```
 
 Parameters supplied to `init_app` override any value previously set in `__init__`.
+
+### Flask-Admin integration (automatic)
+
+Pass a `flask_admin.Admin` instance to `FlaskMerchants` and both admin views are
+registered automatically under the **Merchants** category – no manual wiring needed:
+
+```python
+from flask import Flask
+from flask_admin import Admin
+from flask_merchants import FlaskMerchants
+
+app = Flask(__name__)
+admin = Admin(app, name="My Shop")
+ext = FlaskMerchants(app, admin=admin)
+# Done — PaymentView and ProvidersView registered under "Merchants"
+```
+
+Works with the application-factory pattern too:
+
+```python
+ext = FlaskMerchants()
+ext.init_app(app, admin=admin)
+```
+
+Two views are registered automatically:
+
+| View | URL | Description |
+|------|-----|-------------|
+| **Payments** | `/admin/merchants_payments/` | List, update, refund, cancel, and sync all stored payments |
+| **Providers** | `/admin/merchants_providers/` | Debug view for every registered provider |
+
+The **Providers** view shows the following information for each provider:
+
+| Column | Description |
+|--------|-------------|
+| Provider Key | Unique key string (e.g. `dummy`, `stripe`) |
+| Base URL | Provider API base URL |
+| Auth Type | Auth strategy class (`None`, `ApiKeyAuth`, `TokenAuth`) |
+| Auth Header | HTTP header the credential is sent in |
+| Auth Value | Masked credential – first 5 chars + `…` + last 1 char (e.g. `sk_te…0`) |
+| Transport | Transport layer class (e.g. `RequestsTransport`) |
+| Payments | Number of stored payments routed to this provider |
+
+You can also register the views manually when you need finer control:
+
+```python
+from flask_merchants.contrib.admin import register_admin_views
+
+register_admin_views(admin, ext)
+```
+
+Or add individual views directly:
+
+```python
+from flask_merchants.contrib.admin import PaymentView, ProvidersView
+
+admin.add_view(PaymentView(ext, name="Payments", endpoint="payments", category="Merchants"))
+admin.add_view(ProvidersView(ext, name="Providers", endpoint="providers", category="Merchants"))
+```
 
 ### Payment provider selection
 
@@ -205,7 +265,10 @@ admin.add_view(PaymentModelView(Pagos,     db.session, ext=ext, name="Pagos",   
 admin.add_view(PaymentModelView(Paiements, db.session, ext=ext, name="Paiements", endpoint="paiements"))
 ```
 
-### Flask-Admin (optional)
+### Flask-Admin (legacy / manual)
+
+For fine-grained control, or when using the SQLAlchemy-backed view, you can still
+register individual views manually:
 
 ```python
 from flask_admin import Admin
@@ -214,6 +277,9 @@ from flask_merchants.contrib.admin import PaymentView
 admin = Admin(app, name="My Shop")
 admin.add_view(PaymentView(ext, name="Payments", endpoint="payments"))
 ```
+
+See the [Flask-Admin integration (automatic)](#flask-admin-integration-automatic) section
+above for the recommended single-line approach.
 
 ## Examples
 

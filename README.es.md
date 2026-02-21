@@ -4,11 +4,12 @@ Extensión Flask/Quart para el SDK de pagos [merchants](https://github.com/mario
 
 ## Características
 
-- Clase de extensión `FlaskMerchants` con soporte completo para `init_app` – pasa `db`, `models`, `provider` y `providers` al constructor **o** de forma diferida a `init_app` (compatible con el patrón application-factory)
+- Clase de extensión `FlaskMerchants` con soporte completo para `init_app` – pasa `db`, `models`, `provider`, `providers` y `admin` al constructor **o** de forma diferida a `init_app` (compatible con el patrón application-factory)
 - Blueprint con rutas para checkout, páginas de aterrizaje de éxito/cancelación, estado del pago, webhooks y listado de proveedores
 - Soporte para múltiples proveedores de pago – registra proveedores por nombre a través del registro del SDK `merchants` y selecciona uno en cada petición de checkout
 - Usa `DummyProvider` por defecto – no se necesitan credenciales para desarrollo local
 - Vistas opcionales de Flask-Admin (en `flask_merchants.contrib.admin`) para listar y actualizar estados de pago
+- **Integración automática con Flask-Admin** – pasa `admin=` a `FlaskMerchants` para registrar automáticamente `PaymentView` y `ProvidersView` bajo la categoría *Merchants* con una sola línea
 - Vista opcional de Flask-Admin respaldada por SQLAlchemy (`flask_merchants.contrib.sqla`) con acciones masivas de reembolso/cancelación/sincronización
 - Soporte asíncrono con Quart – el blueprint asíncrono se selecciona automáticamente al detectar una aplicación `quart.Quart`
 
@@ -70,7 +71,7 @@ pip install "flask-merchants[quart]"
 
 ### Patrón application-factory
 
-Todos los parámetros de configuración (`db`, `models`, `provider`, `providers`)
+Todos los parámetros de configuración (`db`, `models`, `provider`, `providers`, `admin`)
 pueden pasarse al constructor `FlaskMerchants()` **o** a `init_app()` de forma
 diferida. Ambos estilos son equivalentes:
 
@@ -99,6 +100,66 @@ def create_app():
 
 Los parámetros proporcionados a `init_app` sobreescriben cualquier valor
 establecido previamente en `__init__`.
+
+### Integración con Flask-Admin (automática)
+
+Pasa una instancia de `flask_admin.Admin` a `FlaskMerchants` y ambas vistas de
+administración se registran automáticamente bajo la categoría **Merchants** – sin
+configuración manual:
+
+```python
+from flask import Flask
+from flask_admin import Admin
+from flask_merchants import FlaskMerchants
+
+app = Flask(__name__)
+admin = Admin(app, name="Mi Tienda")
+ext = FlaskMerchants(app, admin=admin)
+# Listo — PaymentView y ProvidersView registradas bajo "Merchants"
+```
+
+También funciona con el patrón application-factory:
+
+```python
+ext = FlaskMerchants()
+ext.init_app(app, admin=admin)
+```
+
+Se registran dos vistas automáticamente:
+
+| Vista | URL | Descripción |
+|-------|-----|-------------|
+| **Payments** | `/admin/merchants_payments/` | Listar, actualizar, reembolsar, cancelar y sincronizar pagos |
+| **Providers** | `/admin/merchants_providers/` | Vista de depuración de todos los proveedores registrados |
+
+La vista **Providers** muestra la siguiente información por proveedor:
+
+| Columna | Descripción |
+|---------|-------------|
+| Provider Key | Clave única del proveedor (ej. `dummy`, `stripe`) |
+| Base URL | URL base de la API del proveedor |
+| Auth Type | Clase de estrategia de autenticación (`None`, `ApiKeyAuth`, `TokenAuth`) |
+| Auth Header | Cabecera HTTP por la que se envía la credencial |
+| Auth Value | Credencial enmascarada – primeros 5 chars + `…` + último char (ej. `sk_te…0`) |
+| Transport | Clase de capa de transporte (ej. `RequestsTransport`) |
+| Payments | Número de pagos almacenados enrutados a este proveedor |
+
+También puedes registrar las vistas manualmente:
+
+```python
+from flask_merchants.contrib.admin import register_admin_views
+
+register_admin_views(admin, ext)
+```
+
+O agregar vistas individuales directamente:
+
+```python
+from flask_merchants.contrib.admin import PaymentView, ProvidersView
+
+admin.add_view(PaymentView(ext, name="Pagos", endpoint="payments", category="Merchants"))
+admin.add_view(ProvidersView(ext, name="Proveedores", endpoint="providers", category="Merchants"))
+```
 
 ### Selección de proveedor de pago
 
@@ -206,7 +267,10 @@ admin.add_view(PaymentModelView(Pagos,     db.session, ext=ext, name="Pagos",   
 admin.add_view(PaymentModelView(Paiements, db.session, ext=ext, name="Paiements", endpoint="paiements"))
 ```
 
-### Flask-Admin (opcional)
+### Flask-Admin (legado / manual)
+
+Para un control más fino, o cuando se usa la vista respaldada por SQLAlchemy,
+puedes registrar vistas individuales manualmente:
 
 ```python
 from flask_admin import Admin
@@ -215,6 +279,9 @@ from flask_merchants.contrib.admin import PaymentView
 admin = Admin(app, name="Mi Tienda")
 admin.add_view(PaymentView(ext, name="Pagos", endpoint="payments"))
 ```
+
+Consulta la sección [Integración con Flask-Admin (automática)](#integración-con-flask-admin-automática)
+para el enfoque recomendado con una sola línea.
 
 ## Ejemplos
 
