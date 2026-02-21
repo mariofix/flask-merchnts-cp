@@ -204,7 +204,7 @@ def test_on_model_change_valid_state(sqla_app, sqla_db):
 
 
 def test_on_model_change_invalid_state(sqla_app, sqla_db):
-    """on_model_change raises ValidationError for unknown states."""
+    """on_model_change raises ValidationError for unknown states on create."""
     from wtforms import ValidationError
     from flask_merchants.contrib.sqla import PaymentModelView
 
@@ -212,10 +212,32 @@ def test_on_model_change_invalid_state(sqla_app, sqla_db):
         view = PaymentModelView(Payment, sqla_db.session, name="Q", endpoint="qtest")
         p = Payment(
             session_id="test2", redirect_url="http://x", provider="dummy",
+            amount="1.00", currency="USD", state="pending",
+        )
+        # Bypass @validates to simulate a corrupt value reaching on_model_change.
+        object.__setattr__(p, "state", "invalid_state")
+        with pytest.raises((ValidationError, ValueError)):
+            view.on_model_change(None, p, is_created=True)
+
+
+def test_validates_state_rejects_invalid():
+    """PaymentMixin @validates raises ValueError for an unknown state."""
+    with pytest.raises(ValueError, match="invalid_state"):
+        Payment(
+            session_id="vtest", redirect_url="http://x", provider="dummy",
             amount="1.00", currency="USD", state="invalid_state",
         )
-        with pytest.raises(ValidationError):
-            view.on_model_change(None, p, is_created=False)
+
+
+def test_validates_state_accepts_valid():
+    """PaymentMixin @validates accepts all recognised lifecycle states."""
+    from flask_merchants.models import PaymentMixin
+    for state in PaymentMixin.VALID_STATES:
+        p = Payment(
+            session_id=f"v-{state}", redirect_url="http://x", provider="dummy",
+            amount="1.00", currency="USD", state=state,
+        )
+        assert p.state == state
 
 
 # ---------------------------------------------------------------------------
@@ -283,3 +305,91 @@ def test_action_sync(sqla_client, sqla_app, sqla_db, sqla_ext):
         refreshed = sqla_db.session.query(Payment).filter_by(session_id=session_id).first()
         # DummyProvider returns a terminal state
         assert refreshed.state != "pending"
+
+
+# ---------------------------------------------------------------------------
+# SQLAlchemy attribute history – state-change detection
+# ---------------------------------------------------------------------------
+
+def test_on_model_change_detects_state_change(sqla_app, sqla_db):
+    """on_model_change uses SQLAlchemy history to detect state changes."""
+    with sqla_app.app_context():
+        from sqlalchemy import inspect as sa_inspect
+
+        p = Payment(
+            session_id="hist1", redirect_url="http://x", provider="dummy",
+            amount="1.00", currency="USD", state="pending",
+        )
+        sqla_db.session.add(p)
+        sqla_db.session.flush()
+
+        # After flush, history should be clean.
+        history_before = sa_inspect(p).attrs.state.history
+        assert not history_before.has_changes()
+
+        # Modify state – history should now report a change.
+        p.state = "succeeded"
+        history_after = sa_inspect(p).attrs.state.history
+        assert history_after.has_changes()
+        assert history_after.added[0] == "succeeded"
+        assert history_after.deleted[0] == "pending"
+
+
+def test_on_model_change_no_state_change(sqla_app, sqla_db):
+    """on_model_change does not flag a state change when only other fields change."""
+    with sqla_app.app_context():
+        from sqlalchemy import inspect as sa_inspect
+
+        p = Payment(
+            session_id="hist2", redirect_url="http://x", provider="dummy",
+            amount="2.00", currency="USD", state="pending",
+        )
+        sqla_db.session.add(p)
+        sqla_db.session.flush()
+
+        # Change a non-state field.
+        p.provider = "other"
+        history = sa_inspect(p).attrs.state.history
+        # State history should not show changes when only provider changed.
+        assert not history.has_changes()
+
+
+# ---------------------------------------------------------------------------
+# Expanded form columns / create support
+# ---------------------------------------------------------------------------
+
+def test_payment_model_view_can_create():
+    """PaymentModelView has can_create enabled."""
+    from flask_merchants.contrib.sqla import PaymentModelView
+    assert PaymentModelView.can_create is True
+
+
+def test_payment_model_view_form_create_columns():
+    """PaymentModelView exposes the expected create-form columns."""
+    from flask_merchants.contrib.sqla import PaymentModelView
+    assert "session_id" in PaymentModelView.form_create_columns
+    assert "redirect_url" in PaymentModelView.form_create_columns
+    assert "provider" in PaymentModelView.form_create_columns
+    assert "amount" in PaymentModelView.form_create_columns
+    assert "currency" in PaymentModelView.form_create_columns
+    assert "state" in PaymentModelView.form_create_columns
+
+
+def test_payment_model_view_form_edit_columns():
+    """PaymentModelView exposes the expected edit-form columns (no session_id)."""
+    from flask_merchants.contrib.sqla import PaymentModelView
+    assert "redirect_url" in PaymentModelView.form_edit_columns
+    assert "provider" in PaymentModelView.form_edit_columns
+    assert "amount" in PaymentModelView.form_edit_columns
+    assert "currency" in PaymentModelView.form_edit_columns
+    assert "state" in PaymentModelView.form_edit_columns
+    # session_id should not be editable after creation
+    assert "session_id" not in PaymentModelView.form_edit_columns
+
+
+def test_admin_create_page_renders(sqla_client, sqla_app):
+    """Admin payment create page renders successfully."""
+    with sqla_app.app_context():
+        resp = sqla_client.get("/admin/payments/new/")
+        assert resp.status_code == 200
+

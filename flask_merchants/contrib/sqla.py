@@ -63,7 +63,10 @@ class PaymentModelView(ModelView):
 
     Provides:
     - Searchable / filterable list of all payment records.
-    - Inline state editing via ``on_model_change``.
+    - Create, view, and edit payment records (all user-editable fields).
+    - State-change detection via SQLAlchemy attribute history in
+      ``on_model_change``: only when the ``state`` field is actually
+      modified are the extra state-transition checks applied.
     - Bulk **Refund**, **Cancel**, and **Sync from Provider** actions.
 
     Args:
@@ -92,8 +95,30 @@ class PaymentModelView(ModelView):
     column_filters = ["state", "provider", "currency"]
     column_default_sort = ("created_at", True)
 
-    # Make only state and metadata_json editable in the edit form
-    form_columns = ["state", "metadata_json"]
+    # Allow creating new payment records from the admin UI.
+    can_create = True
+
+    # Fields available when creating a new payment.
+    form_create_columns = [
+        "session_id",
+        "redirect_url",
+        "provider",
+        "amount",
+        "currency",
+        "state",
+        "metadata_json",
+    ]
+
+    # Fields available when editing an existing payment.
+    form_edit_columns = [
+        "redirect_url",
+        "provider",
+        "amount",
+        "currency",
+        "state",
+        "metadata_json",
+    ]
+
     form_choices = {"state": _STATE_CHOICES}
 
     # ------------------------------------------------------------------
@@ -109,18 +134,48 @@ class PaymentModelView(ModelView):
     # ------------------------------------------------------------------
 
     def on_model_change(self, form, model, is_created: bool) -> None:
-        """Validate state value before committing.
+        """Detect state changes and validate the new state before committing.
 
-        Called by Flask-Admin within the same transaction when a payment
-        record is created or updated via the edit form.
+        Uses SQLAlchemy's attribute history (``inspect(model).attrs.state.history``)
+        to determine whether the ``state`` field was actually modified in this
+        transaction.  When a state change is detected, the new value is validated
+        against the recognised lifecycle states; if the value is invalid a
+        :class:`wtforms.ValidationError` is raised so Flask-Admin rolls back the
+        form and shows an inline error to the user.
+
+        SQLAlchemy's ``@validates`` hook in :class:`~flask_merchants.models.PaymentMixin`
+        provides the first line of defence at the ORM attribute level.  This
+        hook adds a second layer that integrates with Flask-Admin's form
+        validation pipeline, surfacing errors in the UI rather than as
+        unhandled exceptions.
         """
-        valid_states = {s for s, _ in _STATE_CHOICES}
-        if model.state not in valid_states:
-            from wtforms import ValidationError
-            raise ValidationError(
-                f"Invalid state '{model.state}'. "
-                f"Choose one of: {', '.join(sorted(valid_states))}."
-            )
+        from sqlalchemy import inspect as sa_inspect
+
+        if not is_created:
+            # Use SQLAlchemy attribute history to detect whether state changed.
+            history = sa_inspect(model).attrs.state.history
+            if history.has_changes():
+                # history.added holds the new value; it is empty only when the
+                # attribute was explicitly cleared (set to None).  In that case
+                # new_state is None, which is itself invalid and will be caught
+                # by the check below.
+                new_state = history.added[0] if history.added else None
+                valid_states = {s for s, _ in _STATE_CHOICES}
+                if new_state not in valid_states:
+                    from wtforms import ValidationError
+                    raise ValidationError(
+                        f"Invalid state {new_state!r}. "
+                        f"Choose one of: {', '.join(sorted(valid_states))}."
+                    )
+        else:
+            # On create, validate state regardless (history is not yet tracked).
+            valid_states = {s for s, _ in _STATE_CHOICES}
+            if model.state not in valid_states:
+                from wtforms import ValidationError
+                raise ValidationError(
+                    f"Invalid state {model.state!r}. "
+                    f"Choose one of: {', '.join(sorted(valid_states))}."
+                )
 
     def after_model_change(self, form, model, is_created: bool) -> None:
         """Called after a successful commit.

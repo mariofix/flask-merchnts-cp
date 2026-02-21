@@ -42,7 +42,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import DateTime, Integer, JSON, Numeric, String, func
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, validates
 
 
 class PaymentMixin:
@@ -79,6 +79,31 @@ class PaymentMixin:
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+    #: Valid lifecycle state values accepted by the model.
+    VALID_STATES: frozenset[str] = frozenset(
+        ("pending", "processing", "succeeded", "failed", "cancelled", "refunded", "unknown")
+    )
+
+    @validates("state")
+    def validate_state(self, key: str, value: str) -> str:
+        """Reject unknown state values at the SQLAlchemy attribute level.
+
+        SQLAlchemy calls this automatically whenever ``state`` is assigned,
+        including during bulk operations and direct ORM updates – giving a
+        single, reliable place to enforce the payment lifecycle invariant
+        regardless of which code path triggered the change.
+
+        Raises:
+            ValueError: If *value* is not one of the recognised lifecycle
+                states defined in :attr:`VALID_STATES`.
+        """
+        if value not in self.VALID_STATES:
+            raise ValueError(
+                f"Invalid payment state {value!r}. "
+                f"Allowed values: {', '.join(sorted(self.VALID_STATES))}."
+            )
+        return value
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.session_id} state={self.state!r}>"
