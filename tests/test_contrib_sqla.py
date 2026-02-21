@@ -204,7 +204,7 @@ def test_on_model_change_valid_state(sqla_app, sqla_db):
 
 
 def test_on_model_change_invalid_state(sqla_app, sqla_db):
-    """on_model_change raises ValidationError for unknown states on create."""
+    """on_model_change raises ValidationError for unknown states."""
     from wtforms import ValidationError
     from flask_merchants.contrib.sqla import PaymentModelView
 
@@ -214,10 +214,12 @@ def test_on_model_change_invalid_state(sqla_app, sqla_db):
             session_id="test2", redirect_url="http://x", provider="dummy",
             amount="1.00", currency="USD", state="pending",
         )
-        # Bypass @validates to simulate a corrupt value reaching on_model_change.
-        object.__setattr__(p, "state", "invalid_state")
+        # Write directly to __dict__ to bypass the SQLAlchemy InstrumentedAttribute
+        # descriptor (a data descriptor that triggers @validates on __set__) so we
+        # can test the on_model_change guard in isolation from @validates.
+        p.__dict__["state"] = "invalid_state"
         with pytest.raises((ValidationError, ValueError)):
-            view.on_model_change(None, p, is_created=True)
+            view.on_model_change(None, p, is_created=False)
 
 
 def test_validates_state_rejects_invalid():
@@ -308,58 +310,11 @@ def test_action_sync(sqla_client, sqla_app, sqla_db, sqla_ext):
 
 
 # ---------------------------------------------------------------------------
-# SQLAlchemy attribute history – state-change detection
-# ---------------------------------------------------------------------------
-
-def test_on_model_change_detects_state_change(sqla_app, sqla_db):
-    """on_model_change uses SQLAlchemy history to detect state changes."""
-    with sqla_app.app_context():
-        from sqlalchemy import inspect as sa_inspect
-
-        p = Payment(
-            session_id="hist1", redirect_url="http://x", provider="dummy",
-            amount="1.00", currency="USD", state="pending",
-        )
-        sqla_db.session.add(p)
-        sqla_db.session.flush()
-
-        # After flush, history should be clean.
-        history_before = sa_inspect(p).attrs.state.history
-        assert not history_before.has_changes()
-
-        # Modify state – history should now report a change.
-        p.state = "succeeded"
-        history_after = sa_inspect(p).attrs.state.history
-        assert history_after.has_changes()
-        assert history_after.added[0] == "succeeded"
-        assert history_after.deleted[0] == "pending"
-
-
-def test_on_model_change_no_state_change(sqla_app, sqla_db):
-    """on_model_change does not flag a state change when only other fields change."""
-    with sqla_app.app_context():
-        from sqlalchemy import inspect as sa_inspect
-
-        p = Payment(
-            session_id="hist2", redirect_url="http://x", provider="dummy",
-            amount="2.00", currency="USD", state="pending",
-        )
-        sqla_db.session.add(p)
-        sqla_db.session.flush()
-
-        # Change a non-state field.
-        p.provider = "other"
-        history = sa_inspect(p).attrs.state.history
-        # State history should not show changes when only provider changed.
-        assert not history.has_changes()
-
-
-# ---------------------------------------------------------------------------
 # Expanded form columns / create support
 # ---------------------------------------------------------------------------
 
 def test_payment_model_view_can_create():
-    """PaymentModelView has can_create enabled."""
+    """PaymentModelView defaults to can_create=True."""
     from flask_merchants.contrib.sqla import PaymentModelView
     assert PaymentModelView.can_create is True
 
@@ -392,4 +347,57 @@ def test_admin_create_page_renders(sqla_client, sqla_app):
     with sqla_app.app_context():
         resp = sqla_client.get("/admin/payments/new/")
         assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Configurable constructor kwargs
+# ---------------------------------------------------------------------------
+
+def test_can_create_kwarg_disables_create(sqla_app, sqla_db):
+    """Passing can_create=False at construction disables create on that instance."""
+    with sqla_app.app_context():
+        view = PaymentModelView(
+            Payment, sqla_db.session,
+            name="NoCr", endpoint="nocr",
+            can_create=False,
+        )
+        assert view.can_create is False
+        # Class-level default must remain unchanged.
+        assert PaymentModelView.can_create is True
+
+
+def test_can_edit_kwarg_disables_edit(sqla_app, sqla_db):
+    """Passing can_edit=False at construction disables editing on that instance."""
+    with sqla_app.app_context():
+        view = PaymentModelView(
+            Payment, sqla_db.session,
+            name="NoEd", endpoint="noed",
+            can_edit=False,
+        )
+        assert view.can_edit is False
+        assert PaymentModelView.can_edit is True
+
+
+def test_can_delete_kwarg_enables_delete(sqla_app, sqla_db):
+    """Passing can_delete=True enables deletion on that instance."""
+    with sqla_app.app_context():
+        view = PaymentModelView(
+            Payment, sqla_db.session,
+            name="Del", endpoint="del_test",
+            can_delete=True,
+        )
+        assert view.can_delete is True
+
+
+def test_constructor_kwargs_do_not_affect_class(sqla_app, sqla_db):
+    """Instance overrides from constructor kwargs must not bleed into the class."""
+    with sqla_app.app_context():
+        PaymentModelView(
+            Payment, sqla_db.session,
+            name="Iso", endpoint="iso",
+            can_create=False, can_edit=False,
+        )
+        # Class defaults must be untouched.
+        assert PaymentModelView.can_create is True
+        assert PaymentModelView.can_edit is True
 
