@@ -35,7 +35,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 try:
-    from flask_admin import BaseView, expose
+    from flask_admin.actions import action
+    from flask_admin.model import BaseModelView
 except ImportError as exc:  # pragma: no cover
     raise ImportError(
         "flask-admin is required for flask_merchants.contrib.admin. "
@@ -93,15 +94,21 @@ _STATE_CHOICES = [
 ]
 
 
-class PaymentView(BaseView):
+class _PaymentRecord:
+    """Placeholder model class used as the ``model`` argument for :class:`PaymentView`."""
+
+
+class PaymentView(BaseModelView):
     """Flask-Admin view that lists all stored payments and allows managing them.
 
+    Extends :class:`~flask_admin.model.BaseModelView` so the list page gains
+    built-in search, column sorting, pagination, and actions consistent with
+    other model-backed views in the admin.
+
     Provides:
-    - List of all stored payment sessions.
-    - Update state via dropdown.
-    - Dedicated Refund action.
-    - Dedicated Cancel action.
-    - Sync from Provider action (fetches live status from the payment provider).
+    - List of all stored payment sessions with search and sorting.
+    - Edit state via modal popup (one payment at a time).
+    - Bulk Refund, Cancel, and Sync actions via the "With selected" action dropdown.
 
     Args:
         ext: Initialised :class:`~flask_merchants.FlaskMerchants` extension instance.
@@ -109,6 +116,30 @@ class PaymentView(BaseView):
         endpoint: Internal Flask endpoint prefix (must be unique).
         category: Optional admin category/group name.
     """
+
+    # Disable create/delete; enable modal edit for state changes.
+    can_create = False
+    can_delete = False
+    can_edit = True
+    edit_modal = True
+
+    # Column configuration
+    column_list = ["session_id", "provider", "amount", "currency", "state"]
+    column_searchable_list = ["session_id", "provider", "state"]
+    column_sortable_list = ["provider", "amount", "currency", "state"]
+    column_labels = {
+        "session_id": "Payment ID",
+        "provider": "Provider",
+        "amount": "Amount",
+        "currency": "Currency",
+        "state": "State",
+    }
+
+    # Custom list template – extends admin/model/list.html for consistent UI.
+    list_template = "flask_merchants/admin/payments_list.html"
+
+    # State choices exposed to templates via ``admin_view.state_choices``.
+    state_choices = _STATE_CHOICES
 
     def __init__(
         self,
@@ -119,93 +150,159 @@ class PaymentView(BaseView):
         **kwargs: Any,
     ) -> None:
         self._ext = ext
-        super().__init__(name=name, endpoint=endpoint, category=category, **kwargs)
-
-    @expose("/")
-    def index(self):
-        """List all stored payment sessions."""
-        payments = self._ext.all_sessions()
-        return self.render(
-            "flask_merchants/admin/payments_list.html",
-            payments=payments,
-            state_choices=_STATE_CHOICES,
+        super().__init__(
+            model=_PaymentRecord,
+            name=name,
+            endpoint=endpoint,
+            category=category,
+            **kwargs,
         )
 
-    @expose("/update", methods=["POST"])
-    def update(self):
-        """Update the stored state of a payment via the dropdown."""
-        from flask import flash, redirect, request, url_for
+    # ------------------------------------------------------------------
+    # Required BaseModelView abstract methods
+    # ------------------------------------------------------------------
 
-        payment_id = request.form.get("payment_id", "").strip()
-        new_state = request.form.get("state", "").strip()
+    def scaffold_list_columns(self) -> list[str]:
+        return ["session_id", "provider", "amount", "currency", "state"]
 
-        if not payment_id or not new_state:
-            flash("Invalid form submission.", "danger")
-        elif self._ext.update_state(payment_id, new_state):
+    def scaffold_sortable_columns(self) -> dict[str, str]:
+        return {
+            "provider": "provider",
+            "amount": "amount",
+            "currency": "currency",
+            "state": "state",
+        }
+
+    def scaffold_form(self):
+        from wtforms import Form as WTForm, SelectField
+
+        choices = _STATE_CHOICES
+
+        class StateForm(WTForm):
+            state = SelectField("State", choices=choices)
+
+        return StateForm
+
+    def scaffold_list_form(self, widget=None, validators=None):
+        from wtforms import Form as WTForm
+
+        return WTForm
+
+    def init_search(self) -> bool:
+        return bool(self.column_searchable_list)
+
+    def get_pk_value(self, model) -> str | None:
+        if isinstance(model, dict):
+            return model.get("session_id")
+        return getattr(model, "session_id", None)
+
+    def get_list(self, page, sort_field, sort_desc, search, filters, page_size=None):
+        payments = self._ext.all_sessions()
+
+        if search:
+            search_lower = search.lower()
+            payments = [
+                p
+                for p in payments
+                if search_lower in str(p.get("session_id", "")).lower()
+                or search_lower in str(p.get("provider", "")).lower()
+                or search_lower in str(p.get("state", "")).lower()
+            ]
+
+        if sort_field:
+            payments = sorted(
+                payments,
+                key=lambda p: str(p.get(sort_field, "")),
+                reverse=bool(sort_desc),
+            )
+
+        count = len(payments)
+
+        if page_size is None:
+            page_size = self.page_size
+        if page is not None and page_size:
+            payments = payments[page * page_size : (page + 1) * page_size]
+
+        return count, payments
+
+    def get_one(self, id: str):
+        return self._ext.get_session(id)
+
+    def create_model(self, form):
+        return False
+
+    def update_model(self, form, model) -> bool:
+        """Update payment state from the modal edit form."""
+        from flask import flash
+
+        payment_id = self.get_pk_value(model)
+        new_state = form.state.data
+        if self._ext.update_state(payment_id, new_state):
             flash(f"Payment {payment_id} updated to '{new_state}'.", "success")
-        else:
-            flash(f"Payment {payment_id} not found.", "danger")
+            return True
+        flash(f"Payment {payment_id} not found.", "danger")
+        return False
 
-        return redirect(url_for(".index"))
+    def delete_model(self, model):
+        return False
 
-    @expose("/refund", methods=["POST"])
-    def refund(self):
-        """Mark a payment as refunded."""
-        from flask import flash, redirect, request, url_for
+    def get_empty_list_message(self) -> str:
+        return "No payments recorded yet."
 
-        payment_id = request.form.get("payment_id", "").strip()
+    # ------------------------------------------------------------------
+    # Bulk actions – shown in the "With selected" dropdown
+    # ------------------------------------------------------------------
 
-        if not payment_id:
-            flash("Invalid form submission.", "danger")
-        elif self._ext.refund_session(payment_id):
-            flash(f"Payment {payment_id} marked as refunded.", "success")
-        else:
-            flash(f"Payment {payment_id} not found.", "danger")
+    @action(
+        "refund",
+        "Refund",
+        "Are you sure you want to mark the selected payments as refunded?",
+    )
+    def action_refund(self, ids: list[str]) -> None:
+        """Mark selected payments as refunded."""
+        from flask import flash
 
-        return redirect(url_for(".index"))
+        count = sum(1 for pid in ids if self._ext.refund_session(pid))
+        flash(f"{count} payment(s) marked as refunded.", "success")
 
-    @expose("/cancel", methods=["POST"])
-    def cancel(self):
-        """Mark a payment as cancelled."""
-        from flask import flash, redirect, request, url_for
+    @action(
+        "cancel",
+        "Cancel",
+        "Are you sure you want to cancel the selected payments?",
+    )
+    def action_cancel(self, ids: list[str]) -> None:
+        """Cancel selected payments."""
+        from flask import flash
 
-        payment_id = request.form.get("payment_id", "").strip()
+        count = sum(1 for pid in ids if self._ext.cancel_session(pid))
+        flash(f"{count} payment(s) cancelled.", "success")
 
-        if not payment_id:
-            flash("Invalid form submission.", "danger")
-        elif self._ext.cancel_session(payment_id):
-            flash(f"Payment {payment_id} marked as cancelled.", "success")
-        else:
-            flash(f"Payment {payment_id} not found.", "danger")
+    @action(
+        "sync",
+        "Sync from Provider",
+        "Fetch live status from the provider for the selected payments?",
+    )
+    def action_sync(self, ids: list[str]) -> None:
+        """Sync selected payments from their provider."""
+        from flask import flash
 
-        return redirect(url_for(".index"))
-
-    @expose("/sync", methods=["POST"])
-    def sync(self):
-        """Fetch live payment status from the provider and update the stored state."""
-        from flask import flash, redirect, request, url_for
-
-        payment_id = request.form.get("payment_id", "").strip()
-
-        if not payment_id:
-            flash("Invalid form submission.", "danger")
-        else:
-            updated = self._ext.sync_from_provider(payment_id)
-            if updated is None:
-                flash(
-                    f"Payment {payment_id} not found or provider call failed.", "danger"
-                )
-            else:
-                flash(
-                    f"Payment {payment_id} synced from provider: state is now '{updated['state']}'.",
-                    "success",
-                )
-
-        return redirect(url_for(".index"))
+        count = 0
+        for pid in ids:
+            if self._ext.sync_from_provider(pid) is not None:
+                count += 1
+        flash(f"{count} payment(s) synced from provider.", "success")
 
 
-class ProvidersView(BaseView):
+class _ProviderRecord:
+    """Placeholder model class used as the ``model`` argument for :class:`ProvidersView`."""
+
+
+class ProvidersView(BaseModelView):
     """Flask-Admin view that lists all payment providers registered with the application.
+
+    Extends :class:`~flask_admin.model.BaseModelView` so the list page gains
+    built-in search, column sorting, and pagination consistent with other
+    model-backed views in the admin.
 
     Args:
         ext: Initialised :class:`~flask_merchants.FlaskMerchants` extension instance.
@@ -213,6 +310,36 @@ class ProvidersView(BaseView):
         endpoint: Internal Flask endpoint prefix (must be unique).
         category: Optional admin category/group name.
     """
+
+    # Providers are read-only in the admin.
+    can_create = False
+    can_edit = False
+    can_delete = False
+
+    # Column configuration
+    column_list = [
+        "key",
+        "base_url",
+        "auth_type",
+        "auth_header",
+        "auth_masked_value",
+        "transport",
+        "payment_count",
+    ]
+    column_searchable_list = ["key", "base_url", "auth_type"]
+    column_sortable_list = ["key", "payment_count"]
+    column_labels = {
+        "key": "Provider Key",
+        "base_url": "Base URL",
+        "auth_type": "Auth Type",
+        "auth_header": "Auth Header",
+        "auth_masked_value": "Auth Value",
+        "transport": "Transport",
+        "payment_count": "Payments",
+    }
+
+    # Custom list template – extends admin/model/list.html for consistent UI.
+    list_template = "flask_merchants/admin/providers_list.html"
 
     def __init__(
         self,
@@ -223,16 +350,56 @@ class ProvidersView(BaseView):
         **kwargs: Any,
     ) -> None:
         self._ext = ext
-        super().__init__(name=name, endpoint=endpoint, category=category, **kwargs)
+        super().__init__(
+            model=_ProviderRecord,
+            name=name,
+            endpoint=endpoint,
+            category=category,
+            **kwargs,
+        )
 
-    @expose("/")
-    def index(self):
-        """List all registered payment providers with auth and payment stats."""
+    # ------------------------------------------------------------------
+    # Required BaseModelView abstract methods
+    # ------------------------------------------------------------------
+
+    def scaffold_list_columns(self) -> list[str]:
+        return [
+            "key",
+            "base_url",
+            "auth_type",
+            "auth_header",
+            "auth_masked_value",
+            "transport",
+            "payment_count",
+        ]
+
+    def scaffold_sortable_columns(self) -> dict[str, str]:
+        return {"key": "key", "payment_count": "payment_count"}
+
+    def scaffold_form(self):
+        from wtforms import Form as WTForm
+
+        return WTForm
+
+    def scaffold_list_form(self, widget=None, validators=None):
+        from wtforms import Form as WTForm
+
+        return WTForm
+
+    def init_search(self) -> bool:
+        return bool(self.column_searchable_list)
+
+    def get_pk_value(self, model) -> str | None:
+        if isinstance(model, dict):
+            return model.get("key")
+        return getattr(model, "key", None)
+
+    def _build_providers_list(self) -> list[dict]:
+        """Build the enriched list of provider dicts from the merchants SDK."""
         import merchants as merchants_sdk
 
         provider_keys = merchants_sdk.list_providers()
 
-        # Build a per-provider payment count from the store once.
         all_payments = self._ext.all_sessions()
         payment_counts: dict[str, int] = {}
         for p in all_payments:
@@ -243,7 +410,11 @@ class ProvidersView(BaseView):
         for key in provider_keys:
             try:
                 client = self._ext.get_client(key)
-                base_url = getattr(client._provider, "_base_url", "") or getattr(client, "_base_url", "N/A") or "N/A"
+                base_url = (
+                    getattr(client._provider, "_base_url", "")
+                    or getattr(client, "_base_url", "N/A")
+                    or "N/A"
+                )
                 auth_info = _get_auth_info(client._auth)
                 transport = type(client._transport).__name__
             except Exception:  # noqa: BLE001
@@ -258,15 +429,58 @@ class ProvidersView(BaseView):
                     "auth_type": auth_info["type"],
                     "auth_header": auth_info["header"],
                     "auth_masked_value": auth_info["masked_value"],
-                    "payment_count": payment_counts.get(key, 0),
                     "transport": transport,
+                    "payment_count": payment_counts.get(key, 0),
                 }
             )
 
-        return self.render(
-            "flask_merchants/admin/providers_list.html",
-            providers=providers,
+        return providers
+
+    def get_list(self, page, sort_field, sort_desc, search, filters, page_size=None):
+        providers = self._build_providers_list()
+
+        if search:
+            search_lower = search.lower()
+            providers = [
+                p
+                for p in providers
+                if search_lower in str(p.get("key", "")).lower()
+                or search_lower in str(p.get("base_url", "")).lower()
+                or search_lower in str(p.get("auth_type", "")).lower()
+            ]
+
+        if sort_field:
+            providers = sorted(
+                providers,
+                key=lambda p: str(p.get(sort_field, "")),
+                reverse=bool(sort_desc),
+            )
+
+        count = len(providers)
+
+        if page_size is None:
+            page_size = self.page_size
+        if page is not None and page_size:
+            providers = providers[page * page_size : (page + 1) * page_size]
+
+        return count, providers
+
+    def get_one(self, id: str):
+        return next(
+            (p for p in self._build_providers_list() if p.get("key") == id), None
         )
+
+    def create_model(self, form):
+        return False
+
+    def update_model(self, form, model):
+        return False
+
+    def delete_model(self, model):
+        return False
+
+    def get_empty_list_message(self) -> str:
+        return "No providers registered."
 
 
 def register_admin_views(admin, ext: "FlaskMerchants", *, payment_name: str = "Payments", provider_name: str = "Providers") -> None:
