@@ -428,15 +428,13 @@ def test_providers_view_shows_provider_info(auto_admin_client):
     """ProvidersView renders ProviderInfo fields from merchants.describe_providers()."""
     resp = auto_admin_client.get("/admin/merchants_providers/")
     assert resp.status_code == 200
-    # DummyProvider's name and author fields from ProviderInfo
+    # DummyProvider's name field from ProviderInfo
     assert b"Dummy" in resp.data
-    assert b"merchants team" in resp.data
 
 
 def test_providers_view_shows_version(auto_admin_client):
     """ProvidersView shows the provider version from ProviderInfo."""
     import merchants
-    from merchants.providers.dummy import DummyProvider
     # Get actual version from describe_providers to avoid hardcoding
     infos = merchants.describe_providers()
     dummy_info = next((p for p in infos if p.key == "dummy"), None)
@@ -445,6 +443,31 @@ def test_providers_view_shows_version(auto_admin_client):
     resp = auto_admin_client.get("/admin/merchants_providers/")
     assert resp.status_code == 200
     assert dummy_info.version.encode() in resp.data
+
+
+def test_providers_view_shows_base_url_and_transport(auto_admin_client):
+    """ProvidersView renders base_url and transport columns."""
+    resp = auto_admin_client.get("/admin/merchants_providers/")
+    assert resp.status_code == 200
+    assert b"RequestsTransport" in resp.data
+
+
+def test_providers_view_shows_auth_type_with_tooltip(auto_admin_client):
+    """ProvidersView renders auth_type as a badge with a tooltip for auth_header/auth_masked_value."""
+    resp = auto_admin_client.get("/admin/merchants_providers/")
+    assert resp.status_code == 200
+    assert b'data-toggle="tooltip"' in resp.data
+
+
+def test_providers_view_payment_count(auto_admin_client):
+    """ProvidersView shows a non-zero payment count badge after a checkout."""
+    auto_admin_client.post(
+        "/merchants/checkout",
+        json={"amount": "5.00", "currency": "USD"},
+    )
+    resp = auto_admin_client.get("/admin/merchants_providers/")
+    assert resp.status_code == 200
+    assert b"badge-primary" in resp.data
 
 
 # ---------------------------------------------------------------------------
@@ -647,7 +670,7 @@ def test_payment_view_column_config():
 
 
 def test_providers_view_column_config():
-    """ProvidersView exposes column_searchable_list and column_sortable_list."""
+    """ProvidersView exposes correct column_list, column_searchable_list, and column_sortable_list."""
     from flask_merchants.contrib.admin import ProvidersView
 
     assert "key" in ProvidersView.column_searchable_list
@@ -655,6 +678,15 @@ def test_providers_view_column_config():
     assert "key" in ProvidersView.column_sortable_list
     assert "name" in ProvidersView.column_sortable_list
     assert "version" in ProvidersView.column_sortable_list
+    assert "payment_count" in ProvidersView.column_sortable_list
+    # These columns should appear in the list view
+    for col in ("key", "name", "version", "base_url", "auth_type", "transport", "payment_count"):
+        assert col in ProvidersView.column_list
+    # auth_header and auth_masked_value should be in details only, not the list
+    assert "auth_header" not in ProvidersView.column_list
+    assert "auth_masked_value" not in ProvidersView.column_list
+    assert "auth_header" in ProvidersView.column_details_list
+    assert "auth_masked_value" in ProvidersView.column_details_list
 
 
 # ---------------------------------------------------------------------------

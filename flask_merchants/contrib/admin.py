@@ -342,10 +342,31 @@ class ProvidersView(BaseModelView):
     can_view_details = True
 
     # Column configuration
-    column_list = ["key", "name", "author", "version", "description", "url"]
-    column_details_list = ["key", "name", "author", "version", "description", "url"]
+    column_list = [
+        "key",
+        "name",
+        "version",
+        "base_url",
+        "auth_type",
+        "transport",
+        "payment_count",
+    ]
+    column_details_list = [
+        "key",
+        "name",
+        "author",
+        "version",
+        "description",
+        "url",
+        "base_url",
+        "auth_type",
+        "auth_header",
+        "auth_masked_value",
+        "transport",
+        "payment_count",
+    ]
     column_searchable_list = ["key", "name", "author"]
-    column_sortable_list = ["key", "name", "version"]
+    column_sortable_list = ["key", "name", "version", "payment_count"]
     column_labels = {
         "key": "Provider Key",
         "name": "Name",
@@ -353,6 +374,12 @@ class ProvidersView(BaseModelView):
         "version": "Version",
         "description": "Description",
         "url": "URL",
+        "base_url": "Base URL",
+        "auth_type": "Auth Type",
+        "auth_header": "Auth Header",
+        "auth_masked_value": "Auth Value",
+        "transport": "Transport",
+        "payment_count": "Payments",
     }
 
     # Custom list template – extends admin/model/list.html for consistent UI.
@@ -380,10 +407,10 @@ class ProvidersView(BaseModelView):
     # ------------------------------------------------------------------
 
     def scaffold_list_columns(self) -> list[str]:
-        return ["key", "name", "author", "version", "description", "url"]
+        return ["key", "name", "version", "base_url", "auth_type", "transport", "payment_count"]
 
     def scaffold_sortable_columns(self) -> dict[str, str]:
-        return {"key": "key", "name": "name", "version": "version"}
+        return {"key": "key", "name": "name", "version": "version", "payment_count": "payment_count"}
 
     def scaffold_form(self):
         from wtforms import Form as WTForm
@@ -409,10 +436,46 @@ class ProvidersView(BaseModelView):
         return getattr(model, "key", None)
 
     def _build_providers_list(self) -> list[dict]:
-        """Return the list of provider info dicts from :func:`merchants.describe_providers`."""
+        """Return enriched provider dicts combining :func:`merchants.describe_providers` info
+        with runtime client data (base_url, auth, transport, payment_count)."""
         import merchants as merchants_sdk
 
-        return [p.model_dump() for p in merchants_sdk.describe_providers()]
+        all_payments = self._ext.all_sessions()
+        payment_counts: dict[str, int] = {}
+        for p in all_payments:
+            pkey = p.get("provider", "")
+            payment_counts[pkey] = payment_counts.get(pkey, 0) + 1
+
+        providers = []
+        for info in merchants_sdk.describe_providers():
+            key = info.key
+            try:
+                client = self._ext.get_client(key)
+                base_url = (
+                    getattr(client._provider, "_base_url", "")
+                    or getattr(client, "_base_url", "N/A")
+                    or "N/A"
+                )
+                auth_info = _get_auth_info(client._auth)
+                transport = type(client._transport).__name__
+            except Exception:  # noqa: BLE001
+                base_url = "N/A"
+                auth_info = _get_auth_info(None)
+                transport = "N/A"
+
+            providers.append(
+                {
+                    **info.model_dump(),
+                    "base_url": base_url,
+                    "auth_type": auth_info["type"],
+                    "auth_header": auth_info["header"],
+                    "auth_masked_value": auth_info["masked_value"],
+                    "transport": transport,
+                    "payment_count": payment_counts.get(key, 0),
+                }
+            )
+
+        return providers
 
     def get_list(self, page, sort_field, sort_desc, search, filters, page_size=None):
         providers = self._build_providers_list()
