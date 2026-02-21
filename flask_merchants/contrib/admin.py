@@ -46,6 +46,42 @@ if TYPE_CHECKING:
     from flask_merchants import FlaskMerchants
 
 
+def _mask_secret(value: str) -> str:
+    """Return *value* with all but the first 5 and last 1 characters masked.
+
+    Short values (6 characters or fewer) are replaced entirely with ``"***"``
+    to avoid leaking meaningful content through the masking pattern.
+
+    Examples::
+
+        _mask_secret("sk_test_1234567890")  # -> "sk_te…0"
+        _mask_secret("short")               # -> "***"
+    """
+    if len(value) <= 6:
+        return "***"
+    return value[:5] + "…" + value[-1]
+
+
+def _get_auth_info(auth) -> dict[str, str]:
+    """Extract and mask auth details from an :class:`~merchants.auth.AuthStrategy`.
+
+    Returns a dict with ``type``, ``header``, and ``masked_value`` keys.
+    When *auth* is ``None`` an empty/unauthenticated descriptor is returned.
+    """
+    if auth is None:
+        return {"type": "None", "header": "—", "masked_value": "—"}
+
+    auth_type = type(auth).__name__
+    # ApiKeyAuth stores the key in _api_key; TokenAuth in _token
+    raw = getattr(auth, "_api_key", None) or getattr(auth, "_token", None) or ""
+    header = getattr(auth, "_header", "—")
+    return {
+        "type": auth_type,
+        "header": str(header),
+        "masked_value": _mask_secret(raw) if raw else "—",
+    }
+
+
 _STATE_CHOICES = [
     ("pending", "Pending"),
     ("processing", "Processing"),
@@ -191,18 +227,41 @@ class ProvidersView(BaseView):
 
     @expose("/")
     def index(self):
-        """List all registered payment providers."""
+        """List all registered payment providers with auth and payment stats."""
         import merchants as merchants_sdk
 
         provider_keys = merchants_sdk.list_providers()
+
+        # Build a per-provider payment count from the store once.
+        all_payments = self._ext.all_sessions()
+        payment_counts: dict[str, int] = {}
+        for p in all_payments:
+            pkey = p.get("provider", "")
+            payment_counts[pkey] = payment_counts.get(pkey, 0) + 1
+
         providers = []
         for key in provider_keys:
             try:
                 client = self._ext.get_client(key)
-                base_url = getattr(client, "_base_url", "N/A")
+                base_url = getattr(client._provider, "_base_url", "") or getattr(client, "_base_url", "N/A") or "N/A"
+                auth_info = _get_auth_info(client._auth)
+                transport = type(client._transport).__name__
             except Exception:  # noqa: BLE001
                 base_url = "N/A"
-            providers.append({"key": key, "base_url": base_url})
+                auth_info = _get_auth_info(None)
+                transport = "N/A"
+
+            providers.append(
+                {
+                    "key": key,
+                    "base_url": base_url,
+                    "auth_type": auth_info["type"],
+                    "auth_header": auth_info["header"],
+                    "auth_masked_value": auth_info["masked_value"],
+                    "payment_count": payment_counts.get(key, 0),
+                    "transport": transport,
+                }
+            )
 
         return self.render(
             "flask_merchants/admin/providers_list.html",
