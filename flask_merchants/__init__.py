@@ -253,6 +253,8 @@ class FlaskMerchants:
 
         app.config.setdefault("MERCHANTS_WEBHOOK_SECRET", None)
         app.config.setdefault("MERCHANTS_URL_PREFIX", "/merchants")
+        app.config.setdefault("MERCHANTS_PAYMENT_VIEW_NAME", "Payments")
+        app.config.setdefault("MERCHANTS_PROVIDER_VIEW_NAME", "Providers")
 
         if _is_quart_app(app):
             from flask_merchants.quart_views import create_async_blueprint
@@ -270,7 +272,12 @@ class FlaskMerchants:
         if self._admin is not None:
             from flask_merchants.contrib.admin import register_admin_views
 
-            register_admin_views(self._admin, self)
+            register_admin_views(
+                self._admin,
+                self,
+                payment_name=app.config["MERCHANTS_PAYMENT_VIEW_NAME"],
+                provider_name=app.config["MERCHANTS_PROVIDER_VIEW_NAME"],
+            )
 
     # ------------------------------------------------------------------
     # Public API

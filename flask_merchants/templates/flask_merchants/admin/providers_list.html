@@ -1,42 +1,52 @@
 {% extends 'admin/master.html' %}
 
 {% block body %}
-<div class="container-fluid">
-  <h2>Registered Providers</h2>
+<div>
+  {% block model_menu_bar %}
+  <ul class="nav nav-tabs">
+    <li class="nav-item">
+      <a href="javascript:void(0)" class="nav-link active">List ({{ providers|length }})</a>
+    </li>
+  </ul>
+  {% endblock %}
 
-  <table class="table table-bordered table-striped">
-    <thead>
-      <tr>
-        <th>Provider Key</th>
-        <th>Base URL</th>
-        <th>Auth Type</th>
-        <th>Auth Header</th>
-        <th>Auth Value</th>
-        <th>Transport</th>
-        <th>Payments</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for p in providers %}
-      <tr>
-        <td><code>{{ p.key }}</code></td>
-        <td><small>{{ p.base_url }}</small></td>
-        <td><span class="badge badge-info">{{ p.auth_type }}</span></td>
-        <td><code>{{ p.auth_header }}</code></td>
-        <td><code>{{ p.auth_masked_value }}</code></td>
-        <td><small>{{ p.transport }}</small></td>
-        <td>
-          <span class="badge badge-{% if p.payment_count > 0 %}primary{% else %}secondary{% endif %}">
-            {{ p.payment_count }}
-          </span>
-        </td>
-      </tr>
-      {% else %}
-      <tr>
-        <td colspan="7" class="text-center text-muted">No providers registered.</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="table-responsive">
+    <table class="table table-striped table-bordered table-hover model-list">
+      <thead>
+        <tr>
+          <th>Provider Key</th>
+          <th>Base URL</th>
+          <th>Auth Type</th>
+          <th>Auth Header</th>
+          <th>Auth Value</th>
+          <th>Transport</th>
+          <th>Payments</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in providers %}
+        <tr>
+          <td><code>{{ p.key }}</code></td>
+          <td><small>{{ p.base_url }}</small></td>
+          <td><span class="badge badge-info">{{ p.auth_type }}</span></td>
+          <td><code>{{ p.auth_header }}</code></td>
+          <td><code>{{ p.auth_masked_value }}</code></td>
+          <td><small>{{ p.transport }}</small></td>
+          <td>
+            <span class="badge badge-{% if p.payment_count > 0 %}primary{% else %}secondary{% endif %}">
+              {{ p.payment_count }}
+            </span>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="7">
+            <div class="text-center">No providers registered.</div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endblock %}
