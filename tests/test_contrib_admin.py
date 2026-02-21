@@ -424,26 +424,27 @@ def test_get_auth_info_token_auth():
 # ProvidersView shows enriched info
 # ---------------------------------------------------------------------------
 
-def test_providers_view_shows_auth_and_transport(auto_admin_client):
-    """ProvidersView renders auth type, transport, and payment count columns."""
+def test_providers_view_shows_provider_info(auto_admin_client):
+    """ProvidersView renders ProviderInfo fields from merchants.describe_providers()."""
     resp = auto_admin_client.get("/admin/merchants_providers/")
     assert resp.status_code == 200
-    # No auth for DummyProvider
-    assert b"None" in resp.data
-    # Transport class name
-    assert b"RequestsTransport" in resp.data
+    # DummyProvider's name and author fields from ProviderInfo
+    assert b"Dummy" in resp.data
+    assert b"merchants team" in resp.data
 
 
-def test_providers_view_payment_count(auto_admin_client):
-    """ProvidersView shows a non-zero payment count after a checkout."""
-    auto_admin_client.post(
-        "/merchants/checkout",
-        json={"amount": "5.00", "currency": "USD"},
-    )
+def test_providers_view_shows_version(auto_admin_client):
+    """ProvidersView shows the provider version from ProviderInfo."""
+    import merchants
+    from merchants.providers.dummy import DummyProvider
+    # Get actual version from describe_providers to avoid hardcoding
+    infos = merchants.describe_providers()
+    dummy_info = next((p for p in infos if p.key == "dummy"), None)
+    assert dummy_info is not None
+
     resp = auto_admin_client.get("/admin/merchants_providers/")
     assert resp.status_code == 200
-    # Payment badge should show at least 1
-    assert b"badge-primary" in resp.data
+    assert dummy_info.version.encode() in resp.data
 
 
 # ---------------------------------------------------------------------------
@@ -650,5 +651,45 @@ def test_providers_view_column_config():
     from flask_merchants.contrib.admin import ProvidersView
 
     assert "key" in ProvidersView.column_searchable_list
+    assert "name" in ProvidersView.column_searchable_list
     assert "key" in ProvidersView.column_sortable_list
-    assert "payment_count" in ProvidersView.column_sortable_list
+    assert "name" in ProvidersView.column_sortable_list
+    assert "version" in ProvidersView.column_sortable_list
+
+
+# ---------------------------------------------------------------------------
+# ProvidersView can_view_details and details endpoint
+# ---------------------------------------------------------------------------
+
+def test_providers_view_can_view_details_is_true():
+    """ProvidersView has can_view_details set to True."""
+    from flask_merchants.contrib.admin import ProvidersView
+
+    assert ProvidersView.can_view_details is True
+
+
+def test_providers_view_can_create_edit_delete_are_false():
+    """ProvidersView has can_create, can_edit, can_delete all set to False."""
+    from flask_merchants.contrib.admin import ProvidersView
+
+    assert ProvidersView.can_create is False
+    assert ProvidersView.can_edit is False
+    assert ProvidersView.can_delete is False
+
+
+def test_providers_view_details_page(auto_admin_client):
+    """ProvidersView details page is accessible for the dummy provider."""
+    resp = auto_admin_client.get("/admin/merchants_providers/details/?id=dummy")
+    assert resp.status_code == 200
+    assert b"dummy" in resp.data
+
+
+def test_providers_view_uses_describe_providers(auto_admin_client):
+    """ProvidersView list shows all ProviderInfo fields from merchants.describe_providers()."""
+    import merchants
+    infos = merchants.describe_providers()
+    resp = auto_admin_client.get("/admin/merchants_providers/")
+    assert resp.status_code == 200
+    # Every registered provider key should appear in the list
+    for info in infos:
+        assert info.key.encode() in resp.data
