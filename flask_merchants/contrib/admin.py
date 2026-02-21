@@ -269,7 +269,7 @@ class ProvidersView(BaseView):
         )
 
 
-def register_admin_views(admin, ext: "FlaskMerchants") -> None:
+def register_admin_views(admin, ext: "FlaskMerchants", *, payment_name: str = "Payments", provider_name: str = "Providers") -> None:
     """Register the standard Merchants admin views into *admin*.
 
     This registers :class:`PaymentView` and :class:`ProvidersView` under
@@ -283,14 +283,21 @@ def register_admin_views(admin, ext: "FlaskMerchants") -> None:
 
         register_admin_views(admin, ext)
 
+    When called via ``FlaskMerchants.init_app``, the *payment_name* and
+    *provider_name* values are read from ``app.config`` using
+    ``MERCHANTS_PAYMENT_VIEW_NAME`` and ``MERCHANTS_PROVIDER_VIEW_NAME``
+    respectively.
+
     Args:
         admin: A :class:`flask_admin.Admin` instance.
         ext: An initialised :class:`~flask_merchants.FlaskMerchants` instance.
+        payment_name: Display name for the Payments menu item.
+        provider_name: Display name for the Providers menu item.
     """
     admin.add_view(
         PaymentView(
             ext,
-            name="Payments",
+            name=payment_name,
             endpoint="merchants_payments",
             category="Merchants",
         )
@@ -298,7 +305,7 @@ def register_admin_views(admin, ext: "FlaskMerchants") -> None:
     admin.add_view(
         ProvidersView(
             ext,
-            name="Providers",
+            name=provider_name,
             endpoint="merchants_providers",
             category="Merchants",
         )

@@ -432,3 +432,129 @@ def test_providers_view_payment_count(auto_admin_client):
     assert resp.status_code == 200
     # Payment badge should show at least 1
     assert b"badge-primary" in resp.data
+
+
+# ---------------------------------------------------------------------------
+# Template structure
+# ---------------------------------------------------------------------------
+
+def test_payments_list_uses_model_list_table(admin_client):
+    """PaymentView list page renders the standard Flask-Admin model-list table."""
+    resp = admin_client.get("/admin/payments/")
+    assert resp.status_code == 200
+    assert b"model-list" in resp.data
+    assert b"table-hover" in resp.data
+
+
+def test_payments_list_has_nav_tabs(admin_client):
+    """PaymentView list page includes the nav-tabs header bar."""
+    resp = admin_client.get("/admin/payments/")
+    assert resp.status_code == 200
+    assert b"nav-tabs" in resp.data
+
+
+def test_payments_list_color_coded_badges(admin_client, admin_ext):
+    """Color-coded state badges are rendered for known states."""
+    admin_client.post("/merchants/checkout", json={"amount": "1.00", "currency": "USD"})
+    resp = admin_client.get("/admin/payments/")
+    assert resp.status_code == 200
+    # Pending state should show a secondary badge by default
+    assert b"badge-secondary" in resp.data
+
+
+def test_payments_list_actions_in_first_column(admin_client, admin_ext):
+    """Row action buttons (Refund, Cancel, Sync) appear in the list."""
+    admin_client.post("/merchants/checkout", json={"amount": "1.00", "currency": "USD"})
+    resp = admin_client.get("/admin/payments/")
+    assert resp.status_code == 200
+    assert b"Refund" in resp.data
+    assert b"Cancel" in resp.data
+    assert b"Sync" in resp.data
+
+
+def test_providers_list_uses_model_list_table(auto_admin_client):
+    """ProvidersView list page renders the standard Flask-Admin model-list table."""
+    resp = auto_admin_client.get("/admin/merchants_providers/")
+    assert resp.status_code == 200
+    assert b"model-list" in resp.data
+    assert b"table-hover" in resp.data
+
+
+def test_providers_list_has_nav_tabs(auto_admin_client):
+    """ProvidersView list page includes the nav-tabs header bar."""
+    resp = auto_admin_client.get("/admin/merchants_providers/")
+    assert resp.status_code == 200
+    assert b"nav-tabs" in resp.data
+
+
+# ---------------------------------------------------------------------------
+# Configurable menu item names via app config
+# ---------------------------------------------------------------------------
+
+def test_configurable_payment_view_name_via_config():
+    """MERCHANTS_PAYMENT_VIEW_NAME config overrides the Payments menu label."""
+    from flask_admin import Admin
+
+    app = Flask(__name__)
+    app.config["TESTING"] = True
+    app.config["SECRET_KEY"] = "s"
+    app.config["MERCHANTS_PAYMENT_VIEW_NAME"] = "Pagos"
+
+    admin = Admin(app, name="Test")
+    FlaskMerchants(app, admin=admin)
+
+    with app.test_client() as client:
+        resp = client.get("/admin/merchants_payments/")
+        assert resp.status_code == 200
+        assert b"Pagos" in resp.data
+
+
+def test_configurable_provider_view_name_via_config():
+    """MERCHANTS_PROVIDER_VIEW_NAME config overrides the Providers menu label."""
+    from flask_admin import Admin
+
+    app = Flask(__name__)
+    app.config["TESTING"] = True
+    app.config["SECRET_KEY"] = "s"
+    app.config["MERCHANTS_PROVIDER_VIEW_NAME"] = "Proveedores"
+
+    admin = Admin(app, name="Test")
+    FlaskMerchants(app, admin=admin)
+
+    with app.test_client() as client:
+        resp = client.get("/admin/merchants_providers/")
+        assert resp.status_code == 200
+        assert b"Proveedores" in resp.data
+
+
+def test_register_admin_views_custom_names():
+    """register_admin_views accepts payment_name and provider_name parameters."""
+    from flask_admin import Admin
+    from flask_merchants.contrib.admin import register_admin_views
+
+    app = Flask(__name__)
+    app.config["TESTING"] = True
+    app.config["SECRET_KEY"] = "s"
+    admin = Admin(app, name="Test")
+    ext = FlaskMerchants(app)
+    register_admin_views(admin, ext, payment_name="Paiements", provider_name="Fournisseurs")
+
+    with app.test_client() as client:
+        resp = client.get("/admin/merchants_payments/")
+        assert resp.status_code == 200
+        assert b"Paiements" in resp.data
+
+        resp = client.get("/admin/merchants_providers/")
+        assert resp.status_code == 200
+        assert b"Fournisseurs" in resp.data
+
+
+def test_default_config_values_set_on_init_app():
+    """init_app sets MERCHANTS_PAYMENT_VIEW_NAME and MERCHANTS_PROVIDER_VIEW_NAME defaults."""
+    app = Flask(__name__)
+    app.config["TESTING"] = True
+    app.config["SECRET_KEY"] = "s"
+    FlaskMerchants(app)
+
+    assert app.config["MERCHANTS_PAYMENT_VIEW_NAME"] == "Payments"
+    assert app.config["MERCHANTS_PROVIDER_VIEW_NAME"] == "Providers"
