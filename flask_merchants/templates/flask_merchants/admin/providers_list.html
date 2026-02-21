@@ -1,0 +1,42 @@
+{% extends 'admin/master.html' %}
+
+{% block body %}
+<div class="container-fluid">
+  <h2>Registered Providers</h2>
+
+  <table class="table table-bordered table-striped">
+    <thead>
+      <tr>
+        <th>Provider Key</th>
+        <th>Base URL</th>
+        <th>Auth Type</th>
+        <th>Auth Header</th>
+        <th>Auth Value</th>
+        <th>Transport</th>
+        <th>Payments</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in providers %}
+      <tr>
+        <td><code>{{ p.key }}</code></td>
+        <td><small>{{ p.base_url }}</small></td>
+        <td><span class="badge badge-info">{{ p.auth_type }}</span></td>
+        <td><code>{{ p.auth_header }}</code></td>
+        <td><code>{{ p.auth_masked_value }}</code></td>
+        <td><small>{{ p.transport }}</small></td>
+        <td>
+          <span class="badge badge-{% if p.payment_count > 0 %}primary{% else %}secondary{% endif %}">
+            {{ p.payment_count }}
+          </span>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="7" class="text-center text-muted">No providers registered.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

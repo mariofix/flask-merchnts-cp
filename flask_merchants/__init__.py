@@ -145,11 +145,12 @@ class FlaskMerchants:
         URL prefix for the blueprint (default: ``"/merchants"``).
     """
 
-    def __init__(self, app=None, *, provider=None, providers=None, db=None, models=None) -> None:
+    def __init__(self, app=None, *, provider=None, providers=None, db=None, models=None, admin=None) -> None:
         self._provider = provider
         self._providers: list = list(providers) if providers is not None else []
         self._db = db
         self._models: list = list(models) if models is not None else []
+        self._admin = admin
         self._client: merchants.Client | None = None
         # Local cache: provider key -> merchants.Client
         self._clients: dict[str, merchants.Client] = {}
@@ -172,6 +173,7 @@ class FlaskMerchants:
         providers=None,
         db=None,
         models=None,
+        admin=None,
     ) -> None:
         """Initialise the extension against *app* (Flask or Quart).
 
@@ -202,6 +204,11 @@ class FlaskMerchants:
             models: A list of SQLAlchemy model classes (each mixing in
                 :class:`~flask_merchants.models.PaymentMixin`).  Overrides the
                 value passed to ``__init__``.
+            admin: A :class:`flask_admin.Admin` instance.  When supplied,
+                :class:`~flask_merchants.contrib.admin.PaymentView` and
+                :class:`~flask_merchants.contrib.admin.ProvidersView` are
+                automatically registered under ``category="Merchants"``.
+                Overrides the value passed to ``__init__``.
 
         Any providers supplied via *provider* / *providers* are registered into
         the ``merchants`` global registry so that they become discoverable via
@@ -220,6 +227,8 @@ class FlaskMerchants:
             self._db = db
         if models is not None:
             self._models = list(models)
+        if admin is not None:
+            self._admin = admin
         # Register explicitly-supplied providers into the merchants registry.
         all_providers: list = list(self._providers)
         if self._provider is not None:
@@ -249,6 +258,12 @@ class FlaskMerchants:
         app.register_blueprint(blueprint, url_prefix=url_prefix)
 
         app.extensions["merchants"] = self
+
+        # Auto-register admin views when an Admin instance was provided.
+        if self._admin is not None:
+            from flask_merchants.contrib.admin import register_admin_views
+
+            register_admin_views(self._admin, self)
 
     # ------------------------------------------------------------------
     # Public API
