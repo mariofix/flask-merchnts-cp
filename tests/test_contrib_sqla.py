@@ -212,10 +212,34 @@ def test_on_model_change_invalid_state(sqla_app, sqla_db):
         view = PaymentModelView(Payment, sqla_db.session, name="Q", endpoint="qtest")
         p = Payment(
             session_id="test2", redirect_url="http://x", provider="dummy",
+            amount="1.00", currency="USD", state="pending",
+        )
+        # Write directly to __dict__ to bypass the SQLAlchemy InstrumentedAttribute
+        # descriptor (a data descriptor that triggers @validates on __set__) so we
+        # can test the on_model_change guard in isolation from @validates.
+        p.__dict__["state"] = "invalid_state"
+        with pytest.raises((ValidationError, ValueError)):
+            view.on_model_change(None, p, is_created=False)
+
+
+def test_validates_state_rejects_invalid():
+    """PaymentMixin @validates raises ValueError for an unknown state."""
+    with pytest.raises(ValueError, match="invalid_state"):
+        Payment(
+            session_id="vtest", redirect_url="http://x", provider="dummy",
             amount="1.00", currency="USD", state="invalid_state",
         )
-        with pytest.raises(ValidationError):
-            view.on_model_change(None, p, is_created=False)
+
+
+def test_validates_state_accepts_valid():
+    """PaymentMixin @validates accepts all recognised lifecycle states."""
+    from flask_merchants.models import PaymentMixin
+    for state in PaymentMixin.VALID_STATES:
+        p = Payment(
+            session_id=f"v-{state}", redirect_url="http://x", provider="dummy",
+            amount="1.00", currency="USD", state=state,
+        )
+        assert p.state == state
 
 
 # ---------------------------------------------------------------------------
@@ -283,3 +307,97 @@ def test_action_sync(sqla_client, sqla_app, sqla_db, sqla_ext):
         refreshed = sqla_db.session.query(Payment).filter_by(session_id=session_id).first()
         # DummyProvider returns a terminal state
         assert refreshed.state != "pending"
+
+
+# ---------------------------------------------------------------------------
+# Expanded form columns / create support
+# ---------------------------------------------------------------------------
+
+def test_payment_model_view_can_create():
+    """PaymentModelView defaults to can_create=True."""
+    from flask_merchants.contrib.sqla import PaymentModelView
+    assert PaymentModelView.can_create is True
+
+
+def test_payment_model_view_form_create_columns():
+    """PaymentModelView exposes the expected create-form columns."""
+    from flask_merchants.contrib.sqla import PaymentModelView
+    assert "session_id" in PaymentModelView.form_create_columns
+    assert "redirect_url" in PaymentModelView.form_create_columns
+    assert "provider" in PaymentModelView.form_create_columns
+    assert "amount" in PaymentModelView.form_create_columns
+    assert "currency" in PaymentModelView.form_create_columns
+    assert "state" in PaymentModelView.form_create_columns
+
+
+def test_payment_model_view_form_edit_columns():
+    """PaymentModelView exposes the expected edit-form columns (no session_id)."""
+    from flask_merchants.contrib.sqla import PaymentModelView
+    assert "redirect_url" in PaymentModelView.form_edit_columns
+    assert "provider" in PaymentModelView.form_edit_columns
+    assert "amount" in PaymentModelView.form_edit_columns
+    assert "currency" in PaymentModelView.form_edit_columns
+    assert "state" in PaymentModelView.form_edit_columns
+    # session_id should not be editable after creation
+    assert "session_id" not in PaymentModelView.form_edit_columns
+
+
+def test_admin_create_page_renders(sqla_client, sqla_app):
+    """Admin payment create page renders successfully."""
+    with sqla_app.app_context():
+        resp = sqla_client.get("/admin/payments/new/")
+        assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Configurable constructor kwargs
+# ---------------------------------------------------------------------------
+
+def test_can_create_kwarg_disables_create(sqla_app, sqla_db):
+    """Passing can_create=False at construction disables create on that instance."""
+    with sqla_app.app_context():
+        view = PaymentModelView(
+            Payment, sqla_db.session,
+            name="NoCr", endpoint="nocr",
+            can_create=False,
+        )
+        assert view.can_create is False
+        # Class-level default must remain unchanged.
+        assert PaymentModelView.can_create is True
+
+
+def test_can_edit_kwarg_disables_edit(sqla_app, sqla_db):
+    """Passing can_edit=False at construction disables editing on that instance."""
+    with sqla_app.app_context():
+        view = PaymentModelView(
+            Payment, sqla_db.session,
+            name="NoEd", endpoint="noed",
+            can_edit=False,
+        )
+        assert view.can_edit is False
+        assert PaymentModelView.can_edit is True
+
+
+def test_can_delete_kwarg_enables_delete(sqla_app, sqla_db):
+    """Passing can_delete=True enables deletion on that instance."""
+    with sqla_app.app_context():
+        view = PaymentModelView(
+            Payment, sqla_db.session,
+            name="Del", endpoint="del_test",
+            can_delete=True,
+        )
+        assert view.can_delete is True
+
+
+def test_constructor_kwargs_do_not_affect_class(sqla_app, sqla_db):
+    """Instance overrides from constructor kwargs must not bleed into the class."""
+    with sqla_app.app_context():
+        PaymentModelView(
+            Payment, sqla_db.session,
+            name="Iso", endpoint="iso",
+            can_create=False, can_edit=False,
+        )
+        # Class defaults must be untouched.
+        assert PaymentModelView.can_create is True
+        assert PaymentModelView.can_edit is True
+

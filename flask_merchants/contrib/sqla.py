@@ -63,7 +63,10 @@ class PaymentModelView(ModelView):
 
     Provides:
     - Searchable / filterable list of all payment records.
-    - Inline state editing via ``on_model_change``.
+    - Create, view, and edit payment records (all user-editable fields).
+    - State validation via ``on_model_change`` as a Flask-Admin-level guard,
+      backed by the SQLAlchemy ``@validates`` hook in
+      :class:`~flask_merchants.models.PaymentMixin` at the ORM level.
     - Bulk **Refund**, **Cancel**, and **Sync from Provider** actions.
 
     Args:
@@ -92,16 +95,58 @@ class PaymentModelView(ModelView):
     column_filters = ["state", "provider", "currency"]
     column_default_sort = ("created_at", True)
 
-    # Make only state and metadata_json editable in the edit form
-    form_columns = ["state", "metadata_json"]
+    # Allow creating new payment records from the admin UI.
+    can_create = True
+
+    # Fields available when creating a new payment.
+    form_create_columns = [
+        "session_id",
+        "redirect_url",
+        "provider",
+        "amount",
+        "currency",
+        "state",
+        "metadata_json",
+    ]
+
+    # Fields available when editing an existing payment.
+    form_edit_columns = [
+        "redirect_url",
+        "provider",
+        "amount",
+        "currency",
+        "state",
+        "metadata_json",
+    ]
+
     form_choices = {"state": _STATE_CHOICES}
 
     # ------------------------------------------------------------------
     # Init
     # ------------------------------------------------------------------
 
-    def __init__(self, model, session, *, ext: "FlaskMerchants | None" = None, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        model,
+        session,
+        *,
+        ext: "FlaskMerchants | None" = None,
+        can_create: bool | None = None,
+        can_edit: bool | None = None,
+        can_delete: bool | None = None,
+        **kwargs: Any,
+    ) -> None:
         self._ext = ext
+        # Allow per-instance overrides of the class-level capability flags so
+        # callers can restrict the UI without having to subclass:
+        #
+        #   PaymentModelView(Payment, db.session, ext=ext, can_create=False)
+        if can_create is not None:
+            self.can_create = can_create
+        if can_edit is not None:
+            self.can_edit = can_edit
+        if can_delete is not None:
+            self.can_delete = can_delete
         super().__init__(model, session, **kwargs)
 
     # ------------------------------------------------------------------
@@ -109,16 +154,22 @@ class PaymentModelView(ModelView):
     # ------------------------------------------------------------------
 
     def on_model_change(self, form, model, is_created: bool) -> None:
-        """Validate state value before committing.
+        """Validate state before committing.
 
-        Called by Flask-Admin within the same transaction when a payment
-        record is created or updated via the edit form.
+        WTForms rejects unknown choices via ``form_choices`` before this hook
+        runs.  ``PaymentMixin.validate_state`` (a SQLAlchemy ``@validates``
+        hook) rejects invalid values at the ORM attribute level.  This method
+        acts as a third, Flask-Admin-level guard so that any value that
+        somehow slips through still raises a :class:`wtforms.ValidationError`
+        and surfaces a clean error in the admin UI rather than an unhandled
+        exception.
         """
         valid_states = {s for s, _ in _STATE_CHOICES}
         if model.state not in valid_states:
             from wtforms import ValidationError
+
             raise ValidationError(
-                f"Invalid state '{model.state}'. "
+                f"Invalid state {model.state!r}. "
                 f"Choose one of: {', '.join(sorted(valid_states))}."
             )
 
