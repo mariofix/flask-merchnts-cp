@@ -34,6 +34,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from flask import flash
+from markupsafe import Markup
+
 try:
     from flask_admin.actions import action
     from flask_admin.model import BaseModelView
@@ -93,6 +96,14 @@ _STATE_CHOICES = [
     ("unknown", "Unknown"),
 ]
 
+_STATE_BADGE_CLASSES = {
+    "succeeded": "success",
+    "failed": "danger",
+    "cancelled": "dark",
+    "refunded": "warning",
+    "processing": "info",
+}
+
 
 class _PaymentRecord:
     """Placeholder model class used as the ``model`` argument for :class:`PaymentView`."""
@@ -121,10 +132,12 @@ class PaymentView(BaseModelView):
     can_create = False
     can_delete = False
     can_edit = True
+    can_view_details = True
     edit_modal = True
 
     # Column configuration
     column_list = ["session_id", "provider", "amount", "currency", "state"]
+    column_details_list = ["session_id", "provider", "amount", "currency", "state"]
     column_searchable_list = ["session_id", "provider", "state"]
     column_sortable_list = ["provider", "amount", "currency", "state"]
     column_labels = {
@@ -135,8 +148,19 @@ class PaymentView(BaseModelView):
         "state": "State",
     }
 
-    # Custom list template – extends admin/model/list.html for consistent UI.
-    list_template = "flask_merchants/admin/payments_list.html"
+    column_formatters = {
+        "state": lambda v, c, m, n: Markup(
+            '<span class="badge badge-{cls}">{val}</span>'.format(
+                cls=_STATE_BADGE_CLASSES.get(
+                    (val := v._get_field_value(m, n) or ""), "secondary"
+                ),
+                val=val,
+            )
+        ),
+        "session_id": lambda v, c, m, n: Markup(
+            "<small>{}</small>".format(v._get_field_value(m, n) or "")
+        ),
+    }
 
     # State choices exposed to templates via ``admin_view.state_choices``.
     state_choices = _STATE_CHOICES
@@ -191,6 +215,11 @@ class PaymentView(BaseModelView):
     def init_search(self) -> bool:
         return bool(self.column_searchable_list)
 
+    def _get_field_value(self, model, name):
+        if isinstance(model, dict):
+            return model.get(name)
+        return super()._get_field_value(model, name)
+
     def get_pk_value(self, model) -> str | None:
         if isinstance(model, dict):
             return model.get("session_id")
@@ -233,8 +262,6 @@ class PaymentView(BaseModelView):
 
     def update_model(self, form, model) -> bool:
         """Update payment state from the modal edit form."""
-        from flask import flash
-
         payment_id = self.get_pk_value(model)
         new_state = form.state.data
         if self._ext.update_state(payment_id, new_state):
@@ -260,8 +287,6 @@ class PaymentView(BaseModelView):
     )
     def action_refund(self, ids: list[str]) -> None:
         """Mark selected payments as refunded."""
-        from flask import flash
-
         count = sum(1 for pid in ids if self._ext.refund_session(pid))
         flash(f"{count} payment(s) marked as refunded.", "success")
 
@@ -272,8 +297,6 @@ class PaymentView(BaseModelView):
     )
     def action_cancel(self, ids: list[str]) -> None:
         """Cancel selected payments."""
-        from flask import flash
-
         count = sum(1 for pid in ids if self._ext.cancel_session(pid))
         flash(f"{count} payment(s) cancelled.", "success")
 
@@ -284,8 +307,6 @@ class PaymentView(BaseModelView):
     )
     def action_sync(self, ids: list[str]) -> None:
         """Sync selected payments from their provider."""
-        from flask import flash
-
         count = 0
         for pid in ids:
             if self._ext.sync_from_provider(pid) is not None:
