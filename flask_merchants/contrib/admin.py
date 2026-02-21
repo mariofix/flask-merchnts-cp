@@ -35,7 +35,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 try:
-    from flask_admin import expose
+    from flask_admin.actions import action
     from flask_admin.model import BaseModelView
 except ImportError as exc:  # pragma: no cover
     raise ImportError(
@@ -102,15 +102,13 @@ class PaymentView(BaseModelView):
     """Flask-Admin view that lists all stored payments and allows managing them.
 
     Extends :class:`~flask_admin.model.BaseModelView` so the list page gains
-    built-in search, column sorting, and pagination consistent with other
-    model-backed views in the admin.
+    built-in search, column sorting, pagination, and actions consistent with
+    other model-backed views in the admin.
 
     Provides:
     - List of all stored payment sessions with search and sorting.
-    - Update state via dropdown.
-    - Dedicated Refund action.
-    - Dedicated Cancel action.
-    - Sync from Provider action (fetches live status from the payment provider).
+    - Edit state via modal popup (one payment at a time).
+    - Bulk Refund, Cancel, and Sync actions via the "With selected" action dropdown.
 
     Args:
         ext: Initialised :class:`~flask_merchants.FlaskMerchants` extension instance.
@@ -119,10 +117,11 @@ class PaymentView(BaseModelView):
         category: Optional admin category/group name.
     """
 
-    # Disable CRUD operations – payments are managed through custom actions.
+    # Disable create/delete; enable modal edit for state changes.
     can_create = False
-    can_edit = False
     can_delete = False
+    can_edit = True
+    edit_modal = True
 
     # Column configuration
     column_list = ["session_id", "provider", "amount", "currency", "state"]
@@ -175,9 +174,14 @@ class PaymentView(BaseModelView):
         }
 
     def scaffold_form(self):
-        from wtforms import Form as WTForm
+        from wtforms import Form as WTForm, SelectField
 
-        return WTForm
+        choices = _STATE_CHOICES
+
+        class StateForm(WTForm):
+            state = SelectField("State", choices=choices)
+
+        return StateForm
 
     def scaffold_list_form(self, widget=None, validators=None):
         from wtforms import Form as WTForm
@@ -227,7 +231,16 @@ class PaymentView(BaseModelView):
     def create_model(self, form):
         return False
 
-    def update_model(self, form, model):
+    def update_model(self, form, model) -> bool:
+        """Update payment state from the modal edit form."""
+        from flask import flash
+
+        payment_id = self.get_pk_value(model)
+        new_state = form.state.data
+        if self._ext.update_state(payment_id, new_state):
+            flash(f"Payment {payment_id} updated to '{new_state}'.", "success")
+            return True
+        flash(f"Payment {payment_id} not found.", "danger")
         return False
 
     def delete_model(self, model):
@@ -237,80 +250,47 @@ class PaymentView(BaseModelView):
         return "No payments recorded yet."
 
     # ------------------------------------------------------------------
-    # Custom action endpoints
+    # Bulk actions – shown in the "With selected" dropdown
     # ------------------------------------------------------------------
 
-    @expose("/update", methods=["POST"])
-    def update(self):
-        """Update the stored state of a payment via the dropdown."""
-        from flask import flash, redirect, request, url_for
+    @action(
+        "refund",
+        "Refund",
+        "Are you sure you want to mark the selected payments as refunded?",
+    )
+    def action_refund(self, ids: list[str]) -> None:
+        """Mark selected payments as refunded."""
+        from flask import flash
 
-        payment_id = request.form.get("payment_id", "").strip()
-        new_state = request.form.get("state", "").strip()
+        count = sum(1 for pid in ids if self._ext.refund_session(pid))
+        flash(f"{count} payment(s) marked as refunded.", "success")
 
-        if not payment_id or not new_state:
-            flash("Invalid form submission.", "danger")
-        elif self._ext.update_state(payment_id, new_state):
-            flash(f"Payment {payment_id} updated to '{new_state}'.", "success")
-        else:
-            flash(f"Payment {payment_id} not found.", "danger")
+    @action(
+        "cancel",
+        "Cancel",
+        "Are you sure you want to cancel the selected payments?",
+    )
+    def action_cancel(self, ids: list[str]) -> None:
+        """Cancel selected payments."""
+        from flask import flash
 
-        return redirect(url_for(".index_view"))
+        count = sum(1 for pid in ids if self._ext.cancel_session(pid))
+        flash(f"{count} payment(s) cancelled.", "success")
 
-    @expose("/refund", methods=["POST"])
-    def refund(self):
-        """Mark a payment as refunded."""
-        from flask import flash, redirect, request, url_for
+    @action(
+        "sync",
+        "Sync from Provider",
+        "Fetch live status from the provider for the selected payments?",
+    )
+    def action_sync(self, ids: list[str]) -> None:
+        """Sync selected payments from their provider."""
+        from flask import flash
 
-        payment_id = request.form.get("payment_id", "").strip()
-
-        if not payment_id:
-            flash("Invalid form submission.", "danger")
-        elif self._ext.refund_session(payment_id):
-            flash(f"Payment {payment_id} marked as refunded.", "success")
-        else:
-            flash(f"Payment {payment_id} not found.", "danger")
-
-        return redirect(url_for(".index_view"))
-
-    @expose("/cancel", methods=["POST"])
-    def cancel(self):
-        """Mark a payment as cancelled."""
-        from flask import flash, redirect, request, url_for
-
-        payment_id = request.form.get("payment_id", "").strip()
-
-        if not payment_id:
-            flash("Invalid form submission.", "danger")
-        elif self._ext.cancel_session(payment_id):
-            flash(f"Payment {payment_id} marked as cancelled.", "success")
-        else:
-            flash(f"Payment {payment_id} not found.", "danger")
-
-        return redirect(url_for(".index_view"))
-
-    @expose("/sync", methods=["POST"])
-    def sync(self):
-        """Fetch live payment status from the provider and update the stored state."""
-        from flask import flash, redirect, request, url_for
-
-        payment_id = request.form.get("payment_id", "").strip()
-
-        if not payment_id:
-            flash("Invalid form submission.", "danger")
-        else:
-            updated = self._ext.sync_from_provider(payment_id)
-            if updated is None:
-                flash(
-                    f"Payment {payment_id} not found or provider call failed.", "danger"
-                )
-            else:
-                flash(
-                    f"Payment {payment_id} synced from provider: state is now '{updated['state']}'.",
-                    "success",
-                )
-
-        return redirect(url_for(".index_view"))
+        count = 0
+        for pid in ids:
+            if self._ext.sync_from_provider(pid) is not None:
+                count += 1
+        flash(f"{count} payment(s) synced from provider.", "success")
 
 
 class _ProviderRecord:

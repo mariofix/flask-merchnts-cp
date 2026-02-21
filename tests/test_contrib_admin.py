@@ -59,12 +59,11 @@ def test_payments_list_shows_sessions(admin_client, admin_ext):
 
 
 # ---------------------------------------------------------------------------
-# Update state
+# Update state via modal edit
 # ---------------------------------------------------------------------------
 
 def test_update_state_success(admin_client, admin_ext):
-    """Posting a valid update changes the stored state."""
-    # Create a checkout to get a payment ID
+    """Modal edit view updates the stored state."""
     resp = admin_client.post(
         "/merchants/checkout",
         json={"amount": "10.00", "currency": "USD"},
@@ -72,8 +71,8 @@ def test_update_state_success(admin_client, admin_ext):
     session_id = resp.get_json()["session_id"]
 
     update_resp = admin_client.post(
-        "/admin/payments/update",
-        data={"payment_id": session_id, "state": "succeeded"},
+        f"/admin/payments/edit/?id={session_id}",
+        data={"state": "succeeded", "url": "/admin/payments/"},
     )
     # Should redirect back to list
     assert update_resp.status_code == 302
@@ -83,33 +82,34 @@ def test_update_state_success(admin_client, admin_ext):
 
 
 def test_update_state_unknown_id(admin_client):
-    """Posting an unknown payment ID flashes a 'not found' message."""
+    """Edit of an unknown payment ID returns to list without crashing."""
     resp = admin_client.post(
-        "/admin/payments/update",
-        data={"payment_id": "does-not-exist", "state": "failed"},
+        "/admin/payments/edit/?id=does-not-exist",
+        data={"state": "failed", "url": "/admin/payments/"},
         follow_redirects=True,
     )
     assert resp.status_code == 200
-    assert b"not found" in resp.data
 
 
-def test_update_state_missing_fields(admin_client):
-    """Submitting an empty form flashes an error."""
-    resp = admin_client.post(
-        "/admin/payments/update",
-        data={},
-        follow_redirects=True,
+def test_update_state_modal_get(admin_client, admin_ext):
+    """GET to edit endpoint with modal=True returns 200 with a state select field."""
+    checkout_resp = admin_client.post(
+        "/merchants/checkout",
+        json={"amount": "5.00", "currency": "USD"},
     )
+    session_id = checkout_resp.get_json()["session_id"]
+
+    resp = admin_client.get(f"/admin/payments/edit/?id={session_id}&modal=True")
     assert resp.status_code == 200
-    assert b"Invalid" in resp.data
+    assert b"state" in resp.data
 
 
 # ---------------------------------------------------------------------------
-# PaymentView instantiation
+# Bulk actions via Flask-Admin action endpoint
 # ---------------------------------------------------------------------------
 
 def test_refund_action_success(admin_client, admin_ext):
-    """Refund action marks the payment as refunded."""
+    """Bulk refund action marks the payment as refunded."""
     resp = admin_client.post(
         "/merchants/checkout",
         json={"amount": "10.00", "currency": "USD"},
@@ -117,8 +117,8 @@ def test_refund_action_success(admin_client, admin_ext):
     session_id = resp.get_json()["session_id"]
 
     refund_resp = admin_client.post(
-        "/admin/payments/refund",
-        data={"payment_id": session_id},
+        "/admin/payments/action/",
+        data={"action": "refund", "rowid": session_id, "url": "/admin/payments/"},
     )
     assert refund_resp.status_code == 302
 
@@ -127,18 +127,18 @@ def test_refund_action_success(admin_client, admin_ext):
 
 
 def test_refund_action_unknown_id(admin_client):
-    """Refund of an unknown payment ID flashes a 'not found' message."""
+    """Refunding an unknown ID still returns 302 (zero successes, flash message)."""
     resp = admin_client.post(
-        "/admin/payments/refund",
-        data={"payment_id": "does-not-exist"},
+        "/admin/payments/action/",
+        data={"action": "refund", "rowid": "does-not-exist", "url": "/admin/payments/"},
         follow_redirects=True,
     )
     assert resp.status_code == 200
-    assert b"not found" in resp.data
+    assert b"refunded" in resp.data
 
 
 def test_cancel_action_success(admin_client, admin_ext):
-    """Cancel action marks the payment as cancelled."""
+    """Bulk cancel action marks the payment as cancelled."""
     resp = admin_client.post(
         "/merchants/checkout",
         json={"amount": "5.00", "currency": "EUR"},
@@ -146,8 +146,8 @@ def test_cancel_action_success(admin_client, admin_ext):
     session_id = resp.get_json()["session_id"]
 
     cancel_resp = admin_client.post(
-        "/admin/payments/cancel",
-        data={"payment_id": session_id},
+        "/admin/payments/action/",
+        data={"action": "cancel", "rowid": session_id, "url": "/admin/payments/"},
     )
     assert cancel_resp.status_code == 302
 
@@ -156,44 +156,42 @@ def test_cancel_action_success(admin_client, admin_ext):
 
 
 def test_cancel_action_unknown_id(admin_client):
-    """Cancel of an unknown payment ID flashes a 'not found' message."""
+    """Cancelling an unknown ID still returns 302 (zero successes)."""
     resp = admin_client.post(
-        "/admin/payments/cancel",
-        data={"payment_id": "does-not-exist"},
+        "/admin/payments/action/",
+        data={"action": "cancel", "rowid": "does-not-exist", "url": "/admin/payments/"},
         follow_redirects=True,
     )
     assert resp.status_code == 200
-    assert b"not found" in resp.data
+    assert b"cancelled" in resp.data
 
 
 def test_refund_missing_payment_id(admin_client):
-    """Refund with no payment_id flashes an invalid message."""
+    """Action POST with no rowid returns to list without errors."""
     resp = admin_client.post(
-        "/admin/payments/refund",
-        data={},
+        "/admin/payments/action/",
+        data={"action": "refund", "url": "/admin/payments/"},
         follow_redirects=True,
     )
     assert resp.status_code == 200
-    assert b"Invalid" in resp.data
 
 
 def test_cancel_missing_payment_id(admin_client):
-    """Cancel with no payment_id flashes an invalid message."""
+    """Action POST with no rowid returns to list without errors."""
     resp = admin_client.post(
-        "/admin/payments/cancel",
-        data={},
+        "/admin/payments/action/",
+        data={"action": "cancel", "url": "/admin/payments/"},
         follow_redirects=True,
     )
     assert resp.status_code == 200
-    assert b"Invalid" in resp.data
 
 
 # ---------------------------------------------------------------------------
-# Sync from provider
+# Sync bulk action
 # ---------------------------------------------------------------------------
 
 def test_sync_action_success(admin_client, admin_ext):
-    """Sync action fetches live state from the provider and updates the store."""
+    """Bulk sync action fetches live state from the provider and updates the store."""
     resp = admin_client.post(
         "/merchants/checkout",
         json={"amount": "1.00", "currency": "USD"},
@@ -203,8 +201,8 @@ def test_sync_action_success(admin_client, admin_ext):
     assert admin_ext.get_session(session_id)["state"] == "pending"
 
     sync_resp = admin_client.post(
-        "/admin/payments/sync",
-        data={"payment_id": session_id},
+        "/admin/payments/action/",
+        data={"action": "sync", "rowid": session_id, "url": "/admin/payments/"},
     )
     assert sync_resp.status_code == 302
 
@@ -214,25 +212,24 @@ def test_sync_action_success(admin_client, admin_ext):
 
 
 def test_sync_action_unknown_id(admin_client):
-    """Sync of an unknown payment ID flashes a failure message."""
+    """Syncing an unknown ID returns to list with a flash message."""
     resp = admin_client.post(
-        "/admin/payments/sync",
-        data={"payment_id": "does-not-exist"},
+        "/admin/payments/action/",
+        data={"action": "sync", "rowid": "does-not-exist", "url": "/admin/payments/"},
         follow_redirects=True,
     )
     assert resp.status_code == 200
-    assert b"not found" in resp.data
+    assert b"synced" in resp.data
 
 
 def test_sync_missing_payment_id(admin_client):
-    """Sync with no payment_id flashes an invalid message."""
+    """Sync action with no rowid returns to list without errors."""
     resp = admin_client.post(
-        "/admin/payments/sync",
-        data={},
+        "/admin/payments/action/",
+        data={"action": "sync", "url": "/admin/payments/"},
         follow_redirects=True,
     )
     assert resp.status_code == 200
-    assert b"Invalid" in resp.data
 
 
 # ---------------------------------------------------------------------------
@@ -478,13 +475,14 @@ def test_payments_list_color_coded_badges(admin_client, admin_ext):
 
 
 def test_payments_list_actions_in_first_column(admin_client, admin_ext):
-    """Row action buttons (Refund, Cancel, Sync) appear in the list."""
+    """Row edit action and bulk action dropdown appear in the list."""
     admin_client.post("/merchants/checkout", json={"amount": "1.00", "currency": "USD"})
     resp = admin_client.get("/admin/payments/")
     assert resp.status_code == 200
-    assert b"Refund" in resp.data
-    assert b"Cancel" in resp.data
-    assert b"Sync" in resp.data
+    # Bulk action dropdown
+    assert b"With selected" in resp.data
+    # Row edit popup icon
+    assert b"fa-pencil" in resp.data or b"edit" in resp.data
 
 
 def test_providers_list_uses_model_list_table(auto_admin_client):
