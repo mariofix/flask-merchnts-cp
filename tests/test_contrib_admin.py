@@ -254,3 +254,90 @@ def test_payment_view_requires_ext():
     ext = FlaskMerchants(app)
     view = PaymentView(ext, name="P", endpoint="p")
     assert view._ext is ext
+
+
+# ---------------------------------------------------------------------------
+# Auto-registration via admin= parameter
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def auto_admin_app():
+    """Flask app where admin views are auto-registered via admin= parameter."""
+    app = Flask(__name__)
+    app.config["TESTING"] = True
+    app.config["SECRET_KEY"] = "test-secret"
+
+    from flask_admin import Admin
+
+    admin = Admin(app, name="Auto Admin")
+    FlaskMerchants(app, admin=admin)
+    return app
+
+
+@pytest.fixture
+def auto_admin_client(auto_admin_app):
+    return auto_admin_app.test_client()
+
+
+def test_auto_registration_payments_view(auto_admin_client):
+    """Auto-registered PaymentView is accessible under /admin/merchants_payments/."""
+    resp = auto_admin_client.get("/admin/merchants_payments/")
+    assert resp.status_code == 200
+    assert b"Payments" in resp.data
+
+
+def test_auto_registration_providers_view(auto_admin_client):
+    """Auto-registered ProvidersView is accessible under /admin/merchants_providers/."""
+    resp = auto_admin_client.get("/admin/merchants_providers/")
+    assert resp.status_code == 200
+    assert b"Providers" in resp.data
+
+
+def test_auto_registration_providers_shows_dummy(auto_admin_client):
+    """ProvidersView lists the dummy provider registered by default."""
+    resp = auto_admin_client.get("/admin/merchants_providers/")
+    assert resp.status_code == 200
+    assert b"dummy" in resp.data
+
+
+def test_providers_view_is_base_view():
+    """ProvidersView is a subclass of Flask-Admin BaseView."""
+    from flask_admin import BaseView
+    from flask_merchants.contrib.admin import ProvidersView
+
+    assert issubclass(ProvidersView, BaseView)
+
+
+def test_register_admin_views_function():
+    """register_admin_views adds PaymentView and ProvidersView under Merchants category."""
+    from flask_admin import Admin
+    from flask_merchants.contrib.admin import register_admin_views
+
+    app = Flask(__name__)
+    app.config["TESTING"] = True
+    app.config["SECRET_KEY"] = "s"
+    admin = Admin(app, name="Test")
+    ext = FlaskMerchants(app)
+    register_admin_views(admin, ext)
+
+    # Both views should be registered; verify via test client
+    with app.test_client() as client:
+        assert client.get("/admin/merchants_payments/").status_code == 200
+        assert client.get("/admin/merchants_providers/").status_code == 200
+
+
+def test_init_app_admin_parameter():
+    """admin= passed to init_app is used for auto-registration."""
+    from flask_admin import Admin
+
+    app = Flask(__name__)
+    app.config["TESTING"] = True
+    app.config["SECRET_KEY"] = "s"
+
+    admin = Admin(app, name="Test")
+    ext = FlaskMerchants()
+    ext.init_app(app, admin=admin)
+
+    with app.test_client() as client:
+        assert client.get("/admin/merchants_payments/").status_code == 200
+        assert client.get("/admin/merchants_providers/").status_code == 200

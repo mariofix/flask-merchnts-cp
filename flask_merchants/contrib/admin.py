@@ -4,18 +4,30 @@ Install the optional dependency before using this module::
 
     pip install "flask-merchants[admin]"
 
-Example::
+Example – manual registration::
 
     from flask import Flask
     from flask_admin import Admin
     from flask_merchants import FlaskMerchants
-    from flask_merchants.contrib.admin import PaymentView
+    from flask_merchants.contrib.admin import PaymentView, ProvidersView
 
     app = Flask(__name__)
     ext = FlaskMerchants(app)
 
     admin = Admin(app, name="My Shop")
     admin.add_view(PaymentView(ext, name="Payments", endpoint="payments"))
+    admin.add_view(ProvidersView(ext, name="Providers", endpoint="providers"))
+
+Example – automatic registration (pass ``admin=`` to FlaskMerchants)::
+
+    from flask import Flask
+    from flask_admin import Admin
+    from flask_merchants import FlaskMerchants
+
+    app = Flask(__name__)
+    admin = Admin(app, name="My Shop")
+    ext = FlaskMerchants(app, admin=admin)
+    # PaymentView and ProvidersView are automatically added under category="Merchants"
 """
 
 from __future__ import annotations
@@ -154,3 +166,81 @@ class PaymentView(BaseView):
                 )
 
         return redirect(url_for(".index"))
+
+
+class ProvidersView(BaseView):
+    """Flask-Admin view that lists all payment providers registered with the application.
+
+    Args:
+        ext: Initialised :class:`~flask_merchants.FlaskMerchants` extension instance.
+        name: Display name shown in the admin navigation bar.
+        endpoint: Internal Flask endpoint prefix (must be unique).
+        category: Optional admin category/group name.
+    """
+
+    def __init__(
+        self,
+        ext: "FlaskMerchants",
+        name: str = "Providers",
+        endpoint: str = "providers",
+        category: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        self._ext = ext
+        super().__init__(name=name, endpoint=endpoint, category=category, **kwargs)
+
+    @expose("/")
+    def index(self):
+        """List all registered payment providers."""
+        import merchants as merchants_sdk
+
+        provider_keys = merchants_sdk.list_providers()
+        providers = []
+        for key in provider_keys:
+            try:
+                client = self._ext.get_client(key)
+                base_url = getattr(client, "_base_url", "N/A")
+            except Exception:  # noqa: BLE001
+                base_url = "N/A"
+            providers.append({"key": key, "base_url": base_url})
+
+        return self.render(
+            "flask_merchants/admin/providers_list.html",
+            providers=providers,
+        )
+
+
+def register_admin_views(admin, ext: "FlaskMerchants") -> None:
+    """Register the standard Merchants admin views into *admin*.
+
+    This registers :class:`PaymentView` and :class:`ProvidersView` under
+    ``category="Merchants"``.  It is called automatically when you pass
+    ``admin=`` to :class:`~flask_merchants.FlaskMerchants`::
+
+        admin = Admin(app, name="My Shop")
+        ext = FlaskMerchants(app, admin=admin)
+
+    You can also call it manually if you need finer control::
+
+        register_admin_views(admin, ext)
+
+    Args:
+        admin: A :class:`flask_admin.Admin` instance.
+        ext: An initialised :class:`~flask_merchants.FlaskMerchants` instance.
+    """
+    admin.add_view(
+        PaymentView(
+            ext,
+            name="Payments",
+            endpoint="merchants_payments",
+            category="Merchants",
+        )
+    )
+    admin.add_view(
+        ProvidersView(
+            ext,
+            name="Providers",
+            endpoint="merchants_providers",
+            category="Merchants",
+        )
+    )

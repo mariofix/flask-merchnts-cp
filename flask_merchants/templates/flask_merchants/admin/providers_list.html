@@ -1,0 +1,28 @@
+{% extends 'admin/master.html' %}
+
+{% block body %}
+<div class="container-fluid">
+  <h2>Registered Providers</h2>
+
+  <table class="table table-bordered table-striped">
+    <thead>
+      <tr>
+        <th>Provider Key</th>
+        <th>Base URL</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in providers %}
+      <tr>
+        <td><code>{{ p.key }}</code></td>
+        <td>{{ p.base_url }}</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="2" class="text-center text-muted">No providers registered.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
