@@ -1,16 +1,16 @@
 """Async tests for flask_merchants Quart compatibility."""
 
 import json
+
 import pytest
-import pytest_asyncio
-
 from quart import Quart
-from flask_merchants import FlaskMerchants
 
+from flask_merchants import FlaskMerchants
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def quart_app():
@@ -31,6 +31,7 @@ def quart_ext(quart_app):
 # ---------------------------------------------------------------------------
 # Checkout
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_quart_checkout_json(quart_app):
@@ -77,6 +78,7 @@ async def test_quart_checkout_get_redirect(quart_app):
 # Success / cancel
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_quart_success_view(quart_app):
     """GET /success returns status=success JSON."""
@@ -100,6 +102,7 @@ async def test_quart_cancel_view(quart_app):
 # ---------------------------------------------------------------------------
 # Payment status
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_quart_payment_status(quart_app, quart_ext):
@@ -127,14 +130,17 @@ async def test_quart_payment_status(quart_app, quart_ext):
 # Webhook
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_quart_webhook_no_secret(quart_app):
     """POST /webhook with no secret set processes the event."""
-    payload = json.dumps({
-        "payment_id": "pay_test",
-        "event_type": "payment.succeeded",
-        "event_id": "evt_001",
-    }).encode()
+    payload = json.dumps(
+        {
+            "payment_id": "pay_test",
+            "event_type": "payment.succeeded",
+            "event_id": "evt_001",
+        }
+    ).encode()
 
     async with quart_app.test_client() as client:
         resp = await client.post(
@@ -189,6 +195,7 @@ async def test_quart_webhook_malformed(quart_app):
 # ---------------------------------------------------------------------------
 # Blueprint detection
 # ---------------------------------------------------------------------------
+
 
 def test_quart_blueprint_selected():
     """FlaskMerchants selects the async blueprint for Quart apps."""

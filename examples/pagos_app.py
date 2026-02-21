@@ -29,11 +29,11 @@ from flask_merchants import FlaskMerchants
 from flask_merchants.contrib.sqla import PaymentModelView
 from flask_merchants.models import PaymentMixin
 
-
 # ---------------------------------------------------------------------------
 # 1. Define your own declarative base and model.
 #    Mix in PaymentMixin to get all the payment fields and helpers.
 # ---------------------------------------------------------------------------
+
 
 class Base(DeclarativeBase):
     pass
@@ -75,9 +75,7 @@ db.init_app(app)
 # ---------------------------------------------------------------------------
 
 admin = Admin(app, name="Pagos Admin")
-admin.add_view(
-    PaymentModelView(Pagos, db.session, ext=ext, name="Pagos", endpoint="pagos")
-)
+admin.add_view(PaymentModelView(Pagos, db.session, ext=ext, name="Pagos", endpoint="pagos"))
 
 with app.app_context():
     db.create_all()

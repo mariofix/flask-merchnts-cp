@@ -38,6 +38,7 @@ def admin_ext(admin_app):
 # List view
 # ---------------------------------------------------------------------------
 
+
 def test_payments_list_empty(admin_client):
     """Admin payments list renders with no payments."""
     resp = admin_client.get("/admin/payments/")
@@ -61,6 +62,7 @@ def test_payments_list_shows_sessions(admin_client, admin_ext):
 # ---------------------------------------------------------------------------
 # Update state via modal edit
 # ---------------------------------------------------------------------------
+
 
 def test_update_state_success(admin_client, admin_ext):
     """Modal edit view updates the stored state."""
@@ -107,6 +109,7 @@ def test_update_state_modal_get(admin_client, admin_ext):
 # ---------------------------------------------------------------------------
 # Bulk actions via Flask-Admin action endpoint
 # ---------------------------------------------------------------------------
+
 
 def test_refund_action_success(admin_client, admin_ext):
     """Bulk refund action marks the payment as refunded."""
@@ -190,6 +193,7 @@ def test_cancel_missing_payment_id(admin_client):
 # Sync bulk action
 # ---------------------------------------------------------------------------
 
+
 def test_sync_action_success(admin_client, admin_ext):
     """Bulk sync action fetches live state from the provider and updates the store."""
     resp = admin_client.post(
@@ -236,6 +240,7 @@ def test_sync_missing_payment_id(admin_client):
 # PaymentView class
 # ---------------------------------------------------------------------------
 
+
 def test_payment_view_is_base_view():
     """PaymentView is a subclass of Flask-Admin BaseView (via BaseModelView)."""
     from flask_admin import BaseView
@@ -263,6 +268,7 @@ def test_payment_view_requires_ext():
 # ---------------------------------------------------------------------------
 # Auto-registration via admin= parameter
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def auto_admin_app():
@@ -307,6 +313,7 @@ def test_auto_registration_providers_shows_dummy(auto_admin_client):
 def test_providers_view_is_base_view():
     """ProvidersView is a subclass of Flask-Admin BaseView (via BaseModelView)."""
     from flask_admin import BaseView
+
     from flask_merchants.contrib.admin import ProvidersView
 
     assert issubclass(ProvidersView, BaseView)
@@ -315,6 +322,7 @@ def test_providers_view_is_base_view():
 def test_providers_view_is_model_view():
     """ProvidersView is a subclass of Flask-Admin BaseModelView."""
     from flask_admin.model import BaseModelView
+
     from flask_merchants.contrib.admin import ProvidersView
 
     assert issubclass(ProvidersView, BaseModelView)
@@ -323,6 +331,7 @@ def test_providers_view_is_model_view():
 def test_register_admin_views_function():
     """register_admin_views adds PaymentView and ProvidersView under Merchants category."""
     from flask_admin import Admin
+
     from flask_merchants.contrib.admin import register_admin_views
 
     app = Flask(__name__)
@@ -359,6 +368,7 @@ def test_init_app_admin_parameter():
 # _mask_secret helper
 # ---------------------------------------------------------------------------
 
+
 def test_mask_secret_long_value():
     """Long secrets show first 5 chars, ellipsis, and last char."""
     from flask_merchants.contrib.admin import _mask_secret
@@ -387,6 +397,7 @@ def test_mask_secret_exactly_seven_chars():
 # _get_auth_info helper
 # ---------------------------------------------------------------------------
 
+
 def test_get_auth_info_none():
     """None auth returns unauthenticated descriptor."""
     from flask_merchants.contrib.admin import _get_auth_info
@@ -399,6 +410,7 @@ def test_get_auth_info_none():
 def test_get_auth_info_api_key():
     """ApiKeyAuth returns masked api_key and correct header."""
     from merchants.auth import ApiKeyAuth
+
     from flask_merchants.contrib.admin import _get_auth_info
 
     auth = ApiKeyAuth(api_key="sk_test_abcdefghij", header="X-Api-Key")
@@ -411,6 +423,7 @@ def test_get_auth_info_api_key():
 def test_get_auth_info_token_auth():
     """TokenAuth returns masked token and correct header."""
     from merchants.auth import TokenAuth
+
     from flask_merchants.contrib.admin import _get_auth_info
 
     auth = TokenAuth(token="bearer_token_xyz123", header="Authorization")
@@ -424,6 +437,7 @@ def test_get_auth_info_token_auth():
 # ProvidersView shows enriched info
 # ---------------------------------------------------------------------------
 
+
 def test_providers_view_shows_provider_info(auto_admin_client):
     """ProvidersView renders ProviderInfo fields from merchants.describe_providers()."""
     resp = auto_admin_client.get("/admin/merchants_providers/")
@@ -435,6 +449,7 @@ def test_providers_view_shows_provider_info(auto_admin_client):
 def test_providers_view_shows_version(auto_admin_client):
     """ProvidersView shows the provider version from ProviderInfo."""
     import merchants
+
     # Get actual version from describe_providers to avoid hardcoding
     infos = merchants.describe_providers()
     dummy_info = next((p for p in infos if p.key == "dummy"), None)
@@ -473,6 +488,7 @@ def test_providers_view_payment_count(auto_admin_client):
 # ---------------------------------------------------------------------------
 # Template structure
 # ---------------------------------------------------------------------------
+
 
 def test_payments_list_uses_model_list_table(admin_client):
     """PaymentView list page renders the standard Flask-Admin model-list table."""
@@ -528,6 +544,7 @@ def test_providers_list_has_nav_tabs(auto_admin_client):
 # Configurable menu item names via app config
 # ---------------------------------------------------------------------------
 
+
 def test_configurable_payment_view_name_via_config():
     """MERCHANTS_PAYMENT_VIEW_NAME config overrides the Payments menu label."""
     from flask_admin import Admin
@@ -567,6 +584,7 @@ def test_configurable_provider_view_name_via_config():
 def test_register_admin_views_custom_names():
     """register_admin_views accepts payment_name and provider_name parameters."""
     from flask_admin import Admin
+
     from flask_merchants.contrib.admin import register_admin_views
 
     app = Flask(__name__)
@@ -600,6 +618,7 @@ def test_default_config_values_set_on_init_app():
 # ---------------------------------------------------------------------------
 # ModelView search and sort features
 # ---------------------------------------------------------------------------
+
 
 def test_payment_view_search_supported(admin_client, admin_ext):
     """PaymentView list page includes a search bar (search_supported=True)."""
@@ -693,6 +712,7 @@ def test_providers_view_column_config():
 # ProvidersView can_view_details and details endpoint
 # ---------------------------------------------------------------------------
 
+
 def test_providers_view_can_view_details_is_true():
     """ProvidersView has can_view_details set to True."""
     from flask_merchants.contrib.admin import ProvidersView
@@ -719,6 +739,7 @@ def test_providers_view_details_page(auto_admin_client):
 def test_providers_view_uses_describe_providers(auto_admin_client):
     """ProvidersView list shows all ProviderInfo fields from merchants.describe_providers()."""
     import merchants
+
     infos = merchants.describe_providers()
     resp = auto_admin_client.get("/admin/merchants_providers/")
     assert resp.status_code == 200

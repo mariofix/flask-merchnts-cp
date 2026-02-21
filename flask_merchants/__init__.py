@@ -7,8 +7,8 @@ from typing import Any
 import merchants
 from merchants.providers.dummy import DummyProvider
 
-from flask_merchants.views import create_blueprint
 from flask_merchants.version import __version__
+from flask_merchants.views import create_blueprint
 
 __all__ = ["FlaskMerchants"]
 
@@ -145,7 +145,17 @@ class FlaskMerchants:
         URL prefix for the blueprint (default: ``"/merchants"``).
     """
 
-    def __init__(self, app=None, *, provider=None, providers=None, db=None, model=None, models=None, admin=None) -> None:
+    def __init__(
+        self,
+        app=None,
+        *,
+        provider=None,
+        providers=None,
+        db=None,
+        model=None,
+        models=None,
+        admin=None,
+    ) -> None:
         self._provider = provider
         self._providers: list = list(providers) if providers is not None else []
         self._db = db
@@ -329,8 +339,7 @@ class FlaskMerchants:
                 self._clients[provider_key] = self._make_client(provider_key)
             except KeyError:
                 raise KeyError(
-                    f"Unknown provider: {provider_key!r}. "
-                    f"Available: {merchants.list_providers()}"
+                    f"Unknown provider: {provider_key!r}. Available: {merchants.list_providers()}"
                 )
         return self._clients[provider_key]
 
@@ -351,6 +360,7 @@ class FlaskMerchants:
         if self._models:
             return self._models
         from flask_merchants.models import Payment
+
         return [Payment]
 
     @property
@@ -428,11 +438,7 @@ class FlaskMerchants:
         """
         if self._db is not None:
             for model_cls in self._get_model_classes():
-                record = (
-                    self._db.session.query(model_cls)
-                    .filter_by(session_id=payment_id)
-                    .first()
-                )
+                record = self._db.session.query(model_cls).filter_by(session_id=payment_id).first()
                 if record is not None:
                     return record.to_dict()
             return None
@@ -446,11 +452,7 @@ class FlaskMerchants:
         """
         if self._db is not None:
             for model_cls in self._get_model_classes():
-                record = (
-                    self._db.session.query(model_cls)
-                    .filter_by(session_id=payment_id)
-                    .first()
-                )
+                record = self._db.session.query(model_cls).filter_by(session_id=payment_id).first()
                 if record is not None:
                     record.state = state
                     self._db.session.commit()
@@ -487,7 +489,7 @@ class FlaskMerchants:
             return None
         try:
             status = self.client.payments.get(payment_id)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         self.update_state(payment_id, status.state.value)
         stored["state"] = status.state.value
@@ -508,4 +510,3 @@ class FlaskMerchants:
                 result.extend(r.to_dict() for r in self._db.session.query(cls).all())
             return result
         return list(self._store.values())
-

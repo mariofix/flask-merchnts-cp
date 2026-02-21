@@ -35,6 +35,7 @@ def webhook_client(webhook_app):
 # Without signature verification
 # ---------------------------------------------------------------------------
 
+
 def test_webhook_no_secret(client):
     """Webhook endpoint accepts requests when no secret is configured."""
     payload = json.dumps(
@@ -84,6 +85,7 @@ def test_webhook_updates_store(client, ext):
 # ---------------------------------------------------------------------------
 # With signature verification
 # ---------------------------------------------------------------------------
+
 
 def test_webhook_valid_signature(webhook_client):
     """Valid HMAC signature is accepted."""

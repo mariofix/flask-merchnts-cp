@@ -151,9 +151,7 @@ class PaymentView(BaseModelView):
     column_formatters = {
         "state": lambda v, c, m, n: Markup(
             '<span class="badge badge-{cls}">{val}</span>'.format(
-                cls=_STATE_BADGE_CLASSES.get(
-                    (val := v._get_field_value(m, n) or ""), "secondary"
-                ),
+                cls=_STATE_BADGE_CLASSES.get((val := v._get_field_value(m, n) or ""), "secondary"),
                 val=val,
             )
         ),
@@ -167,7 +165,7 @@ class PaymentView(BaseModelView):
 
     def __init__(
         self,
-        ext: "FlaskMerchants",
+        ext: FlaskMerchants,
         name: str = "Payments",
         endpoint: str = "payments",
         category: str | None = None,
@@ -198,7 +196,8 @@ class PaymentView(BaseModelView):
         }
 
     def scaffold_form(self):
-        from wtforms import Form as WTForm, SelectField
+        from wtforms import Form as WTForm
+        from wtforms import SelectField
 
         choices = _STATE_CHOICES
 
@@ -387,7 +386,7 @@ class ProvidersView(BaseModelView):
 
     def __init__(
         self,
-        ext: "FlaskMerchants",
+        ext: FlaskMerchants,
         name: str = "Providers",
         endpoint: str = "providers",
         category: str | None = None,
@@ -410,7 +409,12 @@ class ProvidersView(BaseModelView):
         return ["key", "name", "version", "base_url", "auth_type", "transport", "payment_count"]
 
     def scaffold_sortable_columns(self) -> dict[str, str]:
-        return {"key": "key", "name": "name", "version": "version", "payment_count": "payment_count"}
+        return {
+            "key": "key",
+            "name": "name",
+            "version": "version",
+            "payment_count": "payment_count",
+        }
 
     def scaffold_form(self):
         from wtforms import Form as WTForm
@@ -458,7 +462,7 @@ class ProvidersView(BaseModelView):
                 )
                 auth_info = _get_auth_info(client._auth)
                 transport = type(client._transport).__name__
-            except Exception:  # noqa: BLE001
+            except Exception:
                 base_url = "N/A"
                 auth_info = _get_auth_info(None)
                 transport = "N/A"
@@ -507,9 +511,7 @@ class ProvidersView(BaseModelView):
         return count, providers
 
     def get_one(self, id: str):
-        return next(
-            (p for p in self._build_providers_list() if p.get("key") == id), None
-        )
+        return next((p for p in self._build_providers_list() if p.get("key") == id), None)
 
     def create_model(self, form):
         return False
@@ -524,7 +526,9 @@ class ProvidersView(BaseModelView):
         return "No providers registered."
 
 
-def register_admin_views(admin, ext: "FlaskMerchants", *, payment_name: str = "Payments", provider_name: str = "Providers") -> None:
+def register_admin_views(
+    admin, ext: FlaskMerchants, *, payment_name: str = "Payments", provider_name: str = "Providers"
+) -> None:
     """Register the standard Merchants admin views into *admin*.
 
     This registers :class:`PaymentView` and :class:`ProvidersView` under

@@ -24,6 +24,7 @@ Then open http://localhost:5000/merchants/checkout in your browser or use curl:
 """
 
 from flask import Flask
+
 from flask_merchants import FlaskMerchants
 
 app = Flask(__name__)

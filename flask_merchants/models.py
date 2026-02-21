@@ -41,7 +41,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, Integer, JSON, Numeric, String, func
+from sqlalchemy import JSON, DateTime, Integer, Numeric, String, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, validates
 
 

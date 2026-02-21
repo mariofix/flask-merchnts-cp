@@ -130,7 +130,7 @@ class PaymentModelView(ModelView):
         model,
         session,
         *,
-        ext: "FlaskMerchants | None" = None,
+        ext: FlaskMerchants | None = None,
         can_create: bool | None = None,
         can_edit: bool | None = None,
         can_delete: bool | None = None,
@@ -169,8 +169,7 @@ class PaymentModelView(ModelView):
             from wtforms import ValidationError
 
             raise ValidationError(
-                f"Invalid state {model.state!r}. "
-                f"Choose one of: {', '.join(sorted(valid_states))}."
+                f"Invalid state {model.state!r}. Choose one of: {', '.join(sorted(valid_states))}."
             )
 
     def after_model_change(self, form, model, is_created: bool) -> None:
@@ -202,7 +201,7 @@ class PaymentModelView(ModelView):
                     count += 1
             self.session.commit()
             flash(f"{count} payment(s) marked as refunded.", "success")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self.session.rollback()
             flash(f"Failed to refund payments: {exc}", "danger")
 
@@ -222,7 +221,7 @@ class PaymentModelView(ModelView):
                     count += 1
             self.session.commit()
             flash(f"{count} payment(s) cancelled.", "success")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self.session.rollback()
             flash(f"Failed to cancel payments: {exc}", "danger")
 
@@ -245,10 +244,10 @@ class PaymentModelView(ModelView):
                     status = self._ext.client.payments.get(record.session_id)
                     record.state = status.state.value
                     count += 1
-                except Exception:  # noqa: BLE001
+                except Exception:
                     pass
             self.session.commit()
             flash(f"{count} payment(s) synced from provider.", "success")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self.session.rollback()
             flash(f"Failed to sync payments: {exc}", "danger")

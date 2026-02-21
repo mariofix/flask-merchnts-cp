@@ -1,13 +1,10 @@
 """Tests for the checkout, success, cancel and status views."""
 
-import json
-
-import pytest
-
 
 # ---------------------------------------------------------------------------
 # Checkout
 # ---------------------------------------------------------------------------
+
 
 def test_checkout_json_response(client):
     """POST /merchants/checkout with JSON body returns session data."""
@@ -66,6 +63,7 @@ def test_checkout_with_metadata(client, ext):
 # Success / cancel
 # ---------------------------------------------------------------------------
 
+
 def test_success_view_no_payment_id(client):
     resp = client.get("/merchants/success")
     assert resp.status_code == 200
@@ -97,6 +95,7 @@ def test_cancel_view(client):
 # Payment status
 # ---------------------------------------------------------------------------
 
+
 def test_payment_status_returns_state(client, ext):
     """Status endpoint returns state info from the provider."""
     resp = client.post("/merchants/checkout", json={"amount": "1.00", "currency": "USD"})
@@ -114,11 +113,11 @@ def test_payment_status_returns_state(client, ext):
 
 def test_payment_status_updates_store(client, ext):
     """Status endpoint updates the stored state."""
+    # Use a provider that always returns SUCCEEDED
+    from flask import Flask
     from merchants import PaymentState
     from merchants.providers.dummy import DummyProvider
 
-    # Use a provider that always returns SUCCEEDED
-    from flask import Flask
     from flask_merchants import FlaskMerchants
 
     test_app = Flask(__name__)

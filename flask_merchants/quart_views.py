@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from flask_merchants import FlaskMerchants
 
 
-def create_async_blueprint(ext: "FlaskMerchants"):
+def create_async_blueprint(ext: FlaskMerchants):
     """Return a Quart Blueprint pre-configured with the extension instance."""
     try:
         from quart import Blueprint, jsonify, redirect, request, url_for
@@ -188,7 +188,7 @@ def create_async_blueprint(ext: "FlaskMerchants"):
 
         try:
             event = ext.client._provider.parse_webhook(payload, headers)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return jsonify({"error": "malformed payload"}), 400
 
         ext.update_state(event.payment_id, event.state.value)

@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from flask_merchants import FlaskMerchants
 
 
-def create_blueprint(ext: "FlaskMerchants") -> Blueprint:
+def create_blueprint(ext: FlaskMerchants) -> Blueprint:
     """Return a Blueprint pre-configured with the extension instance."""
 
     bp = Blueprint("merchants", __name__, template_folder="templates")
@@ -182,7 +182,7 @@ def create_blueprint(ext: "FlaskMerchants") -> Blueprint:
 
         try:
             event = ext.client._provider.parse_webhook(payload, headers)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return jsonify({"error": "malformed payload"}), 400
 
         ext.update_state(event.payment_id, event.state.value)

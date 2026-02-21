@@ -4,8 +4,9 @@ Verifies that a developer can bring their own SQLAlchemy model (e.g. Pagos)
 and have FlaskMerchants store/retrieve payments through it.
 """
 
-import pytest
 from decimal import Decimal
+
+import pytest
 from flask import Flask
 from flask_admin import Admin
 from flask_sqlalchemy import SQLAlchemy
@@ -16,10 +17,10 @@ from flask_merchants import FlaskMerchants
 from flask_merchants.contrib.sqla import PaymentModelView
 from flask_merchants.models import PaymentMixin
 
-
 # ---------------------------------------------------------------------------
 # Fixtures: custom Pagos model backed by in-memory SQLite
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def pagos_app():
@@ -82,10 +83,21 @@ def Pagos(pagos_app):
 # PaymentMixin
 # ---------------------------------------------------------------------------
 
+
 def test_payment_mixin_fields(Pagos):
     """Pagos model inherits all required payment columns from PaymentMixin."""
     cols = {c.key for c in Pagos.__table__.columns}
-    for field in ("session_id", "redirect_url", "provider", "amount", "currency", "state", "metadata_json", "request_payload", "response_payload"):
+    for field in (
+        "session_id",
+        "redirect_url",
+        "provider",
+        "amount",
+        "currency",
+        "state",
+        "metadata_json",
+        "request_payload",
+        "response_payload",
+    ):
         assert field in cols, f"Missing column: {field}"
 
 
@@ -117,6 +129,7 @@ def test_payment_mixin_repr(Pagos):
 # ---------------------------------------------------------------------------
 # Store helpers with custom model
 # ---------------------------------------------------------------------------
+
 
 def test_save_session_uses_custom_model(pagos_client, pagos_app, pagos_db, Pagos):
     """Checkout stores a row in the custom Pagos table."""
@@ -177,6 +190,7 @@ def test_all_sessions_from_custom_model(pagos_client, pagos_app, pagos_ext):
 # ---------------------------------------------------------------------------
 # Flask-Admin with custom model
 # ---------------------------------------------------------------------------
+
 
 def test_admin_pagos_list(pagos_client, pagos_app):
     """Admin list page renders for the custom model."""

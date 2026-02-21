@@ -34,10 +34,10 @@ from flask_merchants import FlaskMerchants
 from flask_merchants.contrib.sqla import PaymentModelView
 from flask_merchants.models import PaymentMixin
 
-
 # ---------------------------------------------------------------------------
 # 1. Shared declarative base and two payment models.
 # ---------------------------------------------------------------------------
+
 
 class Base(DeclarativeBase):
     pass
@@ -81,9 +81,7 @@ db.init_app(app)
 # ---------------------------------------------------------------------------
 
 admin = Admin(app, name="Multi-Model Admin")
-admin.add_view(
-    PaymentModelView(Pagos, db.session, ext=ext, name="Pagos", endpoint="pagos")
-)
+admin.add_view(PaymentModelView(Pagos, db.session, ext=ext, name="Pagos", endpoint="pagos"))
 admin.add_view(
     PaymentModelView(Paiements, db.session, ext=ext, name="Paiements", endpoint="paiements")
 )

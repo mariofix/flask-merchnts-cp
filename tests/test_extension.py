@@ -1,9 +1,9 @@
 """Tests for the FlaskMerchants Flask extension initialisation."""
 
+import merchants as sdk
 import pytest
 from flask import Flask
 
-import merchants as sdk
 from flask_merchants import FlaskMerchants
 from flask_merchants.version import __version__
 
@@ -51,7 +51,6 @@ def test_init_app_factory_with_provider():
 
 def test_init_app_factory_with_providers():
     """init_app accepts providers= and registers all of them."""
-    import merchants as sdk_mod
     import merchants.providers as _mp
     from merchants.providers.dummy import DummyProvider
 
@@ -75,6 +74,7 @@ def test_init_app_factory_with_providers():
 def test_init_app_factory_with_db():
     """init_app accepts db= and persists payments to the database."""
     from flask_sqlalchemy import SQLAlchemy
+
     from flask_merchants.models import Base, Payment
 
     app = Flask(__name__)
@@ -102,6 +102,7 @@ def test_init_app_factory_with_models():
     from flask_sqlalchemy import SQLAlchemy
     from sqlalchemy import Integer
     from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
     from flask_merchants.models import PaymentMixin
 
     class MyBase(DeclarativeBase):
@@ -144,6 +145,7 @@ def test_init_app_overrides_constructor_values():
 def test_constructor_and_init_app_both_work():
     """Both FlaskMerchants(app, db=db) and ext.init_app(app, db=db) are equivalent."""
     from flask_sqlalchemy import SQLAlchemy
+
     from flask_merchants.models import Base
 
     # Style 1: everything in constructor

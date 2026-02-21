@@ -1,21 +1,22 @@
 """Tests for payment provider selection feature."""
 
-import pytest
 import merchants
+import pytest
 from flask import Flask
 from merchants.providers.dummy import DummyProvider
 
 from flask_merchants import FlaskMerchants
 
-
 # ---------------------------------------------------------------------------
 # Registry isolation
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def clean_merchants_registry():
     """Save and restore the merchants provider registry around each test."""
     import merchants.providers as _mp
+
     saved = dict(_mp._REGISTRY)
     yield
     _mp._REGISTRY.clear()
@@ -26,6 +27,7 @@ def clean_merchants_registry():
 # Second DummyProvider subclass with a distinct key
 # ---------------------------------------------------------------------------
 
+
 class AltDummyProvider(DummyProvider):
     key = "alt_dummy"
 
@@ -33,6 +35,7 @@ class AltDummyProvider(DummyProvider):
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def multi_provider_app():
@@ -62,6 +65,7 @@ def multi_ext(multi_provider_app):
 # ---------------------------------------------------------------------------
 # list_providers / get_client
 # ---------------------------------------------------------------------------
+
 
 def test_list_providers_single(app):
     """Default (single DummyProvider) app lists one provider."""
@@ -116,6 +120,7 @@ def test_get_client_unknown_key(multi_ext):
 # /providers endpoint
 # ---------------------------------------------------------------------------
 
+
 def test_providers_endpoint_single(client):
     """GET /merchants/providers returns at least 'dummy'."""
     resp = client.get("/merchants/providers")
@@ -137,6 +142,7 @@ def test_providers_endpoint_multi(multi_client):
 # ---------------------------------------------------------------------------
 # /checkout with provider selection
 # ---------------------------------------------------------------------------
+
 
 def test_checkout_default_provider(client, ext):
     """Checkout without provider field uses the default provider."""

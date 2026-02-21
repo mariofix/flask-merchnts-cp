@@ -15,6 +15,7 @@ Create a checkout first at http://localhost:5000/merchants/checkout.
 
 from flask import Flask
 from flask_admin import Admin
+
 from flask_merchants import FlaskMerchants
 
 app = Flask(__name__)
