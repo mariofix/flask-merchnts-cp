@@ -240,10 +240,17 @@ def test_sync_missing_payment_id(admin_client):
 # ---------------------------------------------------------------------------
 
 def test_payment_view_is_base_view():
-    """PaymentView is a subclass of Flask-Admin BaseView."""
+    """PaymentView is a subclass of Flask-Admin BaseView (via BaseModelView)."""
     from flask_admin import BaseView
 
     assert issubclass(PaymentView, BaseView)
+
+
+def test_payment_view_is_model_view():
+    """PaymentView is a subclass of Flask-Admin BaseModelView."""
+    from flask_admin.model import BaseModelView
+
+    assert issubclass(PaymentView, BaseModelView)
 
 
 def test_payment_view_requires_ext():
@@ -301,11 +308,19 @@ def test_auto_registration_providers_shows_dummy(auto_admin_client):
 
 
 def test_providers_view_is_base_view():
-    """ProvidersView is a subclass of Flask-Admin BaseView."""
+    """ProvidersView is a subclass of Flask-Admin BaseView (via BaseModelView)."""
     from flask_admin import BaseView
     from flask_merchants.contrib.admin import ProvidersView
 
     assert issubclass(ProvidersView, BaseView)
+
+
+def test_providers_view_is_model_view():
+    """ProvidersView is a subclass of Flask-Admin BaseModelView."""
+    from flask_admin.model import BaseModelView
+    from flask_merchants.contrib.admin import ProvidersView
+
+    assert issubclass(ProvidersView, BaseModelView)
 
 
 def test_register_admin_views_function():
@@ -558,3 +573,84 @@ def test_default_config_values_set_on_init_app():
 
     assert app.config["MERCHANTS_PAYMENT_VIEW_NAME"] == "Payments"
     assert app.config["MERCHANTS_PROVIDER_VIEW_NAME"] == "Providers"
+
+
+# ---------------------------------------------------------------------------
+# ModelView search and sort features
+# ---------------------------------------------------------------------------
+
+def test_payment_view_search_supported(admin_client, admin_ext):
+    """PaymentView list page includes a search bar (search_supported=True)."""
+    resp = admin_client.get("/admin/payments/")
+    assert resp.status_code == 200
+    # Flask-Admin renders a search input when search is supported
+    assert b"search" in resp.data.lower()
+
+
+def test_payment_view_search_filters_results(admin_client, admin_ext):
+    """Search query filters displayed payments by session_id, provider, or state."""
+    admin_client.post("/merchants/checkout", json={"amount": "1.00", "currency": "USD"})
+
+    resp = admin_client.get("/admin/payments/?search=dummy_sess_")
+    assert resp.status_code == 200
+    assert b"dummy_sess_" in resp.data
+
+    resp = admin_client.get("/admin/payments/?search=no_match_xyz")
+    assert resp.status_code == 200
+    assert b"dummy_sess_" not in resp.data
+
+
+def test_payment_view_sort_column_links(admin_client):
+    """PaymentView renders sortable column header links."""
+    resp = admin_client.get("/admin/payments/")
+    assert resp.status_code == 200
+    # Sortable columns should produce links with sort param
+    assert b"?sort=" in resp.data
+
+
+def test_payment_view_sort_by_state(admin_client, admin_ext):
+    """Payments can be sorted by state via the sort URL param."""
+    # Create two checkouts and give them different states
+    r1 = admin_client.post("/merchants/checkout", json={"amount": "1.00", "currency": "USD"})
+    r2 = admin_client.post("/merchants/checkout", json={"amount": "2.00", "currency": "USD"})
+    sid1 = r1.get_json()["session_id"]
+    sid2 = r2.get_json()["session_id"]
+    admin_ext.update_state(sid1, "succeeded")
+    admin_ext.update_state(sid2, "failed")
+
+    # Sort by state column (index 4 in column_list)
+    resp = admin_client.get("/admin/payments/?sort=4")
+    assert resp.status_code == 200
+    assert b"succeeded" in resp.data or b"failed" in resp.data
+
+
+def test_providers_view_search_supported(auto_admin_client):
+    """ProvidersView list page includes a search bar."""
+    resp = auto_admin_client.get("/admin/merchants_providers/")
+    assert resp.status_code == 200
+    assert b"search" in resp.data.lower()
+
+
+def test_providers_view_sort_column_links(auto_admin_client):
+    """ProvidersView renders sortable column header links."""
+    resp = auto_admin_client.get("/admin/merchants_providers/")
+    assert resp.status_code == 200
+    assert b"?sort=" in resp.data
+
+
+def test_payment_view_column_config():
+    """PaymentView exposes column_searchable_list and column_sortable_list."""
+    assert "session_id" in PaymentView.column_searchable_list
+    assert "provider" in PaymentView.column_searchable_list
+    assert "state" in PaymentView.column_searchable_list
+    assert "provider" in PaymentView.column_sortable_list
+    assert "state" in PaymentView.column_sortable_list
+
+
+def test_providers_view_column_config():
+    """ProvidersView exposes column_searchable_list and column_sortable_list."""
+    from flask_merchants.contrib.admin import ProvidersView
+
+    assert "key" in ProvidersView.column_searchable_list
+    assert "key" in ProvidersView.column_sortable_list
+    assert "payment_count" in ProvidersView.column_sortable_list
